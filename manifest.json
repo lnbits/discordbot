@@ -1,0 +1,9 @@
+{
+    "repos": [
+        {
+            "id": "discordbot",
+            "organisation": "lnbits",
+            "repository": "discordbot"
+        }
+    ]
+}
