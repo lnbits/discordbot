@@ -17,20 +17,20 @@ from lnbits.core.crud import (
     update_user_extension
 )
 from lnbits.requestvars import g
-from settings import discord_settings
-from .ui import WalletButton, PayButton
-from .utils import (
+from .ui import (
+    WalletButton,
+    PayButton,
     get_balance_str,
     get_amount_str,
     try_send_payment_notification,
 )
+
+from ..settings import discord_settings
 from ..crud import (
     get_or_create_wallet,
     get_discord_wallet,
 )
 from ..models import BotSettings
-
-
 
 # discord.utils.setup_logging()
 
@@ -126,7 +126,7 @@ class LnbitsInteraction(discord.Interaction):
         Note that :class:`AutoShardedClient`, :class:`~.commands.Bot`, and
         :class:`~.commands.AutoShardedBot` are all subclasses of client.
         """
-        return self._client # type: ignore
+        return self._client  # type: ignore
 
 
 intents = discord.Intents.default()
@@ -263,6 +263,31 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
                                                         "wait_time": 1,
                                                         "is_unique": True
                                                     })
+
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title='Donation',
+                description=f'{interaction.user.mention} is donating **{get_amount_str(amount)}**',
+                color=discord.Color.yellow()
+            ).add_field(
+                name='Description',
+                value=description
+            ).add_field(
+                name='LNURL',
+                value=resp['lnurl'],
+                inline=False
+            ),
+            file=discord.File('image.png'),
+            view=discord.ui.View().add_item(
+                PayButton(
+                    payment_request=invoice['payment_request'],
+                    receiver=interaction.user,
+                    receiver_wallet=wallet,
+                    amount=amount,
+                    description=description,
+                )
+            )
+        )
 
     @client.tree.command(
         description='Creates an invoice for the users wallet'
