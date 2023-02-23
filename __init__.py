@@ -16,7 +16,6 @@ discordbot_static_files = [
 
 discordbot_ext: APIRouter = APIRouter(prefix="/discordbot", tags=["discordbot"])
 
-
 def discordbot_renderer():
     return template_renderer(["lnbits/extensions/discordbot/templates"])
 

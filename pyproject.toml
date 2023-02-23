@@ -1,0 +1,10 @@
+[tool.poetry]
+name = "discordbot"
+description = "Discordbot Extension"
+version="0.1.0"
+authors=["jacksn"]
+
+
+[tool.poetry.dependencies]
+discord-py = "^2.1.1"
+pypng = "^0.20220715.0"

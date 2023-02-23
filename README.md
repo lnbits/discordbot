@@ -2,7 +2,10 @@
 
 ## Provide LNbits wallets for all your Discord users
 
-_This extension is a modifed version of LNbits [User Manager](../usermanager/README.md)_
+_This extension depends on the LNbits [User Manager](https://github.com/lnbits/usermanager/blob/main/README.md)_
+
+This extension can be used to run a discord bot which provides lightning functionalities to discord users.
+It can be run through the extension or be self-hosted.
 
 The intended usage of this extension is to connect it to a specifically designed [Discord Bot](https://github.com/chrislennon/lnbits-discord-bot) leveraging LNbits as a community based lightning node.
 
