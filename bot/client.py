@@ -22,7 +22,7 @@ from .ui import (
     PayButton,
     get_balance_str,
     get_amount_str,
-    try_send_payment_notification,
+    try_send_payment_notification, ClaimButton,
 )
 
 from ..settings import discord_settings
@@ -277,15 +277,8 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
                 value=resp['lnurl'],
                 inline=False
             ),
-            file=discord.File('image.png'),
             view=discord.ui.View().add_item(
-                PayButton(
-                    payment_request=invoice['payment_request'],
-                    receiver=interaction.user,
-                    receiver_wallet=wallet,
-                    amount=amount,
-                    description=description,
-                )
+                ClaimButton(lnurl=resp['lnurl'])
             )
         )
 
