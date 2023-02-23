@@ -1,4 +1,4 @@
-from lnbits.db import Database, SQLITE
+from lnbits.db import SQLITE, Database
 
 
 async def m001_initial(db):

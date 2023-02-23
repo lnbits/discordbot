@@ -10,7 +10,7 @@ class DiscordUser(BaseModel):
     name: str
     admin: str
     discord_id: str
-    avatar_url: str
+    avatar_url: Optional[str]
 
 
 class Wallets(BaseModel):

@@ -1,5 +1,6 @@
 import asyncio
 import io
+import os.path
 import random
 from typing import Optional
 
@@ -14,6 +15,7 @@ from loguru import logger
 from lnbits.core import CreateInvoiceData, api_payments_create_invoice
 from lnbits.core.crud import get_wallet, update_user_extension
 from lnbits.requestvars import g
+from lnbits.settings import settings
 
 from ..crud import get_discord_wallet, get_or_create_wallet
 from ..models import BotSettings
@@ -148,6 +150,11 @@ async def start_bot(bot_settings: BotSettings, http: AsyncClient):
     asyncio.create_task(
         client.connect()
     )
+    # Wait a bit for client to connect
+    waiting = 0
+    while not client.is_ready() and waiting < 5:
+        await asyncio.sleep(.25)
+        waiting += 0.25
     return client
 
 
@@ -306,7 +313,8 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
 
         qr_code = pyqrcode.create(invoice['payment_request'])
 
-        qr_code.png(file='image.png', scale=5)
+        temp_path = os.path.join(settings.lnbits_data_folder, 'temp.png')
+        qr_code.png(file=temp_path, scale=5)
 
         await interaction.response.send_message(
             embed=discord.Embed(
@@ -319,13 +327,13 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
                 name='Description',
                 value=description
             ).set_image(
-                url='attachment://image.png'
+                url='attachment://qr.png'
             ).add_field(
                 name='Payment Request',
                 value=invoice['payment_request'],
                 inline=False
             ),
-            file=discord.File('image.png'),
+            file=discord.File(temp_path, 'qr.png'),
             view=discord.ui.View().add_item(
                 PayButton(
                     payment_request=invoice['payment_request'],

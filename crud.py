@@ -1,24 +1,13 @@
 from typing import List, Optional
 
-from lnbits.core.crud import (
-    create_wallet,
-    delete_wallet,
-    get_payments,
-    get_wallet
-)
+from lnbits.core.crud import create_wallet, delete_wallet, get_payments, get_wallet
 from lnbits.core.models import Payment
 
-from . import db
-from .models import DiscordUser, Wallets, BotSettings, CreateBotSettings
-
-from ..usermanager.crud import (
-    get_usermanager_user_by,
-    create_usermanager_user,
-)
-
-from ..usermanager.models import CreateUserData
 from ..usermanager import crud as um_crud
-
+from ..usermanager.crud import create_usermanager_user, get_usermanager_user_by
+from ..usermanager.models import CreateUserData
+from . import db
+from .models import BotSettings, CreateBotSettings, DiscordUser, Wallets
 
 ### Settings
 
