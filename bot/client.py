@@ -11,26 +11,21 @@ from fastapi import HTTPException
 from httpx import AsyncClient
 from loguru import logger
 
-from lnbits.core import api_payments_create_invoice, CreateInvoiceData
-from lnbits.core.crud import (
-    get_wallet,
-    update_user_extension
-)
+from lnbits.core import CreateInvoiceData, api_payments_create_invoice
+from lnbits.core.crud import get_wallet, update_user_extension
 from lnbits.requestvars import g
-from .ui import (
-    WalletButton,
-    PayButton,
-    get_balance_str,
-    get_amount_str,
-    try_send_payment_notification, ClaimButton,
-)
 
-from ..settings import discord_settings
-from ..crud import (
-    get_or_create_wallet,
-    get_discord_wallet,
-)
+from ..crud import get_discord_wallet, get_or_create_wallet
 from ..models import BotSettings
+from ..settings import discord_settings
+from .ui import (
+    ClaimButton,
+    PayButton,
+    WalletButton,
+    get_amount_str,
+    get_balance_str,
+    try_send_payment_notification,
+)
 
 # discord.utils.setup_logging()
 
@@ -131,18 +126,24 @@ class LnbitsInteraction(discord.Interaction):
 
 intents = discord.Intents.default()
 intents.members = True
-running_bots: dict[str, LnbitsClient] = {}
+clients: dict[str, LnbitsClient] = {}
 
 
-def get_running_bot(token: str) -> Optional[LnbitsClient]:
-    return running_bots.get(token)
+def get_client(token: str) -> Optional[LnbitsClient]:
+    return clients.get(token)
 
 
 async def start_bot(bot_settings: BotSettings, http: AsyncClient):
     token = bot_settings.bot_token
-    if token not in running_bots:
-        running_bots[token] = create_client(bot_settings, http)
-    client = running_bots[token]
+    if token not in clients:
+        clients[token] = create_client(bot_settings, http)
+    else:
+        if clients[token].is_closed():
+            clients[token] = create_client(bot_settings, http)
+        else:
+            return clients[token]
+
+    client = clients[token]
     await client.login(token)
     asyncio.create_task(
         client.connect()
@@ -152,10 +153,9 @@ async def start_bot(bot_settings: BotSettings, http: AsyncClient):
 
 async def stop_bot(bot_settings: BotSettings):
     token = bot_settings.bot_token
-    client = running_bots.get(token)
+    client = clients.get(token)
     if client:
         await client.close()
-        client.clear()
     return client
 
 
@@ -306,38 +306,36 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
 
         qr_code = pyqrcode.create(invoice['payment_request'])
 
-        with io.BytesIO() as virtual_file:
-            qr_code.png(file='image.png', scale=5)
-            qr_code.png(file=virtual_file)
+        qr_code.png(file='image.png', scale=5)
 
-            await interaction.response.send_message(
-                embed=discord.Embed(
-                    title='Pay Me!',
-                    color=discord.Color.yellow()
-                ).add_field(
-                    name='Amount',
-                    value=get_amount_str(amount)
-                ).add_field(
-                    name='Description',
-                    value=description
-                ).set_image(
-                    url='attachment://image.png'
-                ).add_field(
-                    name='Payment Request',
-                    value=invoice['payment_request'],
-                    inline=False
-                ),
-                file=discord.File('image.png'),
-                view=discord.ui.View().add_item(
-                    PayButton(
-                        payment_request=invoice['payment_request'],
-                        receiver=interaction.user,
-                        receiver_wallet=wallet,
-                        amount=amount,
-                        description=description,
-                    )
+        await interaction.response.send_message(
+            embed=discord.Embed(
+                title='Pay Me!',
+                color=discord.Color.yellow()
+            ).add_field(
+                name='Amount',
+                value=get_amount_str(amount)
+            ).add_field(
+                name='Description',
+                value=description
+            ).set_image(
+                url='attachment://image.png'
+            ).add_field(
+                name='Payment Request',
+                value=invoice['payment_request'],
+                inline=False
+            ),
+            file=discord.File('image.png'),
+            view=discord.ui.View().add_item(
+                PayButton(
+                    payment_request=invoice['payment_request'],
+                    receiver=interaction.user,
+                    receiver_wallet=wallet,
+                    amount=amount,
+                    description=description,
                 )
             )
+        )
 
     @client.tree.command(
         description='Creates an invoice for the users wallet'

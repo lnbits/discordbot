@@ -1,18 +1,18 @@
 from __future__ import annotations
-import discord
 
 from typing import TYPE_CHECKING
+
+import discord
 
 if TYPE_CHECKING:
     from .client import LnbitsInteraction
 
-from lnbits.core.models import Wallet as FullWallet
 from lnbits.core import api_payments_pay_invoice, get_wallet
+from lnbits.core.models import Wallet as FullWallet
 from lnbits.requestvars import g
-from ..crud import (
-    get_discord_wallet,
-)
+
 from ...usermanager.models import Wallet as UMWallet
+from ..crud import get_discord_wallet
 
 
 def get_amount_str(sats: int):
