@@ -8,18 +8,22 @@ import discord
 import discord.utils
 import pyqrcode
 from discord import app_commands
-from httpx import AsyncClient, HTTPStatusError
+from httpx import AsyncClient
 
 from .api import LnbitsAPI
-from .models import Wallet
 from .settings import discord_settings
-from .ui import ClaimButton, CoinFlipView, PayButton, WalletButton, get_amount_str
+from .ui import (
+    ClaimButton,
+    CoinFlipView,
+    PayButton,
+    TipButton,
+    WalletButton,
+    get_amount_str,
+)
 
-# discord.utils.setup_logging()
-
+discord.utils.setup_logging()
 
 if discord_settings.discord_dev_guild:
-    discord.utils.setup_logging()
     DEV_GUILD = discord.Object(id=discord_settings.discord_dev_guild)
 else:
     DEV_GUILD = None
@@ -41,7 +45,8 @@ class LnbitsClient(discord.Client):
     # By doing so, we don't have to wait up to an hour until they are shown to the end-user.
     async def setup_hook(self):
         # This copies the global commands over to your guild.
-        self.tree.copy_global_to(guild=DEV_GUILD)
+        if DEV_GUILD:
+            self.tree.copy_global_to(guild=DEV_GUILD)
         await self.tree.sync(guild=DEV_GUILD)
 
     async def try_send_payment_notification(self,
@@ -49,7 +54,7 @@ class LnbitsClient(discord.Client):
                                             sender: Union[discord.Member, discord.User],
                                             receiver: Union[discord.Member, discord.User],
                                             amount: int,
-                                            memo: str):
+                                            memo: str = None):
         receiver_wallet = await self.api.get_user_wallet(receiver)
         new_balance = await self.api.get_user_balance(receiver)
 
@@ -162,25 +167,7 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
     )
     @app_commands.guild_only()
     async def tip(interaction: LnbitsInteraction, member: discord.Member, amount: int, memo: str):
-        # await interaction.response.defer(ephemeral=True)
-
-        try:
-            receiver_wallet = await client.api.send_payment(interaction.user, member, amount, memo)
-        except HTTPStatusError as e:
-            await interaction.response.send_message(content=e.response.content)
-            return
-
-        embed = discord.Embed(
-            title='Tip',
-            color=discord.Color.yellow(),
-            description=f'{interaction.user.mention} just sent **{get_amount_str(amount)}** to {member.mention}'
-        )
-        if memo:
-            embed.add_field(name='Memo', value=memo)
-
-        await interaction.response.send_message(embed=embed)
-
-        await client.try_send_payment_notification(interaction, interaction.user, member, amount, memo)
+        await TipButton.execute(interaction, member, amount, memo)
 
     @client.tree.command(
         name="donate",

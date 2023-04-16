@@ -28,6 +28,50 @@ class WalletButton(discord.ui.Button):
         )
 
 
+class TipButton(discord.ui.Button):
+    def __init__(self,
+                 amount: int,
+                 receiver: discord.Member):
+        super().__init__(
+            style=discord.ButtonStyle.primary,
+            label='Repeat',
+            emoji='💸'
+        )
+        self.receiver = receiver
+        self.amount = amount
+
+    @classmethod
+    async def execute(cls, interaction: LnbitsInteraction, member: discord.Member, amount: int, memo: str = None):
+        try:
+            await interaction.client.api.send_payment(interaction.user, member, amount, memo)
+        except HTTPStatusError as e:
+            await interaction.response.send_message(content=e.response.content)
+            return
+
+        embed = discord.Embed(
+            title='Tip',
+            color=discord.Color.yellow(),
+            description=f'{interaction.user.mention} just sent **{get_amount_str(amount)}** to {member.mention}'
+        )
+        if memo:
+            embed.add_field(name='Memo', value=memo)
+
+        await interaction.response.send_message(
+            embed=embed, view=discord.ui.View().add_item(cls(amount, member))
+        )
+
+        await interaction.client.try_send_payment_notification(interaction, interaction.user, member, amount, memo)
+
+    async def callback(self, interaction: LnbitsInteraction):
+        if interaction.user == self.receiver:
+            await interaction.response.send_message(
+                ephemeral=True,
+                content='You cant pay yourself'
+            )
+        else:
+            await self.execute(interaction, self.receiver, self.amount)
+
+
 class PayButton(discord.ui.Button):
     def __init__(self,
                  payment_request: str,
