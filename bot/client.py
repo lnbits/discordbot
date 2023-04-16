@@ -327,8 +327,8 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
 
         balance = await client.api.get_user_balance(interaction.user)
 
-        if not balance < amount:
-            await interaction.response.send_message(content='You do not have enough balance', ephemeral=True)
+        if balance < amount:
+            return await interaction.response.send_message(content='You do not have enough balance', ephemeral=True)
 
         await interaction.response.defer()
 

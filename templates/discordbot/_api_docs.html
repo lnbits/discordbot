@@ -1,58 +1,66 @@
 <q-expansion-item
-  group="extras"
-  icon="swap_vertical_circle"
-  label="Info"
-  :content-inset-level="0.5"
+  group='extras'
+  icon='swap_vertical_circle'
+  label='Info'
+  :content-inset-level='0.5'
 >
   <q-card>
     <q-card-section>
-      <h5 class="text-subtitle1 q-my-none">
+      <h5 class='text-subtitle1 q-my-none'>
         Discord Bot: Connect Discord users to LNbits.
       </h5>
       <p>
         Easily deploy a discord bot to use for your own community!
-        <a class="text-secondary" href="/docs#/discordbot">API Docs</a><br />
+        <a class='text-secondary' href='/docs#/discordbot'>API Docs</a><br />
         <small>
           Created by
-          <a class="text-secondary" href="https://github.com/jackstar12"
-            >jacksn</a
-          >
+          <a class='text-secondary' href='https://github.com/jackstar12'>jacksn</a>
+          <a class='text-secondary' href='https://github.com/chrislennon'>Chris Lennon</a>
           <br />
           Depends on User Manager, by
-          <a class="text-secondary" href="https://github.com/benarc">Ben Arc</a>
+          <a class='text-secondary' href='https://github.com/benarc'>Ben Arc</a>
         </small>
       </p>
     </q-card-section>
   </q-card>
 </q-expansion-item>
 <q-expansion-item
-  group="extras"
-  icon="swap_vertical_circle"
-  label="Setup"
-  :content-inset-level="0.5"
+  group='extras'
+  icon='swap_vertical_circle'
+  label='Setup'
+  :content-inset-level='0.5'
 >
   <q-card>
     <q-card-section>
-      <h5 class="text-subtitle1 q-my-none">Directly running on instance</h5>
+      <h5 class='text-subtitle1 q-my-none'>Registering a discord application</h5>
+      <p>
+        You will first have to create a discord application at
+        <a class='text-secondary' href='https://discord.com/developers/applications'
+        >https://discord.com/developers/applications</a
+        >, and add a bot to it. You can now connect this extension by opening the
+        Create Bot dialogue and pasting the bot token from discord.
+      </p>
+
+      <h5 class='text-subtitle1 q-my-none'>Directly running on instance</h5>
       <p>
         The easiest way to get a bot running is to run it directly on your
-        instance. Easily deploy a discord bot to use for your own community!
-        <a class="text-secondary" href="/docs#/discordbot">API Docs</a><br />
+        instance by sure the standalone option in the create bot dialogue is disabled
       </p>
-      <h5 class="text-subtitle1 q-my-none">Self-hosting</h5>
+      <h5 class='text-subtitle1 q-my-none'>Self-hosting</h5>
       <p>
         If you want more control or don't want to add additional load to your
-        instance, you can self-host the bot.
+        instance, you can self-host the bot (standalone box ticked).
         <a
-          class="text-secondary"
-          href="https://github.com/jackstar12/discordbot"
-          >Details here</a
+          class='text-secondary'
+          href='https://github.com/jackstar12/discordbot#self-hosted'
+        >Details here</a
         >
         <br />
         To connect to this instance you can use this as your .env
+        <br />
         <code>
-          LNBITS_URL={{request.base_url}}<br />
-          {% raw %} LNBITS_ADMIN_KEY={{g.user.wallets[0].adminkey}}<br />
+          LNBITS_URL={{ request.base_url }}<br />
+          {% raw %} LNBITS_ADMIN_KEY={{ g.user.wallets[0].adminkey }}<br />
           {% endraw %} DATA_FOLDER=./data <br />
         </code>
       </p>
