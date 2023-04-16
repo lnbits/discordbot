@@ -3,6 +3,8 @@ from __future__ import annotations
 from sqlite3 import Row
 from typing import Optional
 
+from usermanager import User, UserFilters
+
 try:
     import discord
 except ImportError:
@@ -17,6 +19,11 @@ class DiscordUser(BaseModel):
     admin: str
     discord_id: str
     avatar_url: Optional[str]
+
+
+class DiscordFilters(UserFilters):
+    __search_fields__ = ["name"]
+    discord_id: str
 
 
 class Wallets(BaseModel):

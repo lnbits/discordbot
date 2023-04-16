@@ -4,43 +4,44 @@ from fastapi import APIRouter, Depends, Query
 from starlette.exceptions import HTTPException
 
 from lnbits.db import Filter, Filters, Operator
-from lnbits.decorators import WalletTypeInfo, get_key_type, require_admin_key
+from lnbits.decorators import WalletTypeInfo, parse_filters, require_admin_key
 from lnbits.extensions.usermanager.crud import get_usermanager_users
+from lnbits.helpers import generate_filter_params_openapi
 
 from . import discordbot_ext
 from .crud import (
     create_discordbot_settings,
     delete_discordbot_settings,
     get_discordbot_settings,
-    get_discordbot_user,
-    get_discordbot_users_wallets,
-    get_discordbot_wallet_transactions,
-    get_discordbot_wallets,
     update_discordbot_settings,
 )
 from .models import (
     BotInfo,
     BotSettings,
     CreateBotSettings,
+    DiscordFilters,
     DiscordUser,
     UpdateBotSettings,
 )
 
 try:
     from tasks import get_client, start_bot, stop_bot
+
     can_run_bot = True
 except ImportError:
     def get_client(token: str):
         return None
 
+
     async def start_bot(bot_settings: BotSettings):
         return None
+
 
     async def stop_bot(bot_settings: BotSettings):
         return None
 
-    can_run_bot = False
 
+    can_run_bot = False
 
 discordbot_api: APIRouter = APIRouter(prefix="/api/v1", tags=["discordbot"])
 
@@ -134,54 +135,32 @@ async def api_bot_stop(bot_settings: BotSettings = Depends(require_bot_settings)
     return BotInfo.from_client(bot_settings, client)
 
 
-@discordbot_api.get("/users", status_code=HTTPStatus.OK, response_model=list[DiscordUser])
-async def api_discordbot_users(bot_settings: BotSettings = Depends(require_bot_settings)):
-    filters = Filters(
-        filters=[Filter(field='extra', nested=['discord_id'], values=['null'], op=Operator.NE)]
+@discordbot_api.get(
+    "/users",
+    description="Get a list of users registered for your bot",
+    status_code=HTTPStatus.OK,
+    response_model=list[DiscordUser],
+    openapi_extra=generate_filter_params_openapi(DiscordFilters)
+)
+async def api_discordbot_users(
+    bot_settings: BotSettings = Depends(require_bot_settings),
+    filters: Filters = Depends(parse_filters(DiscordFilters))
+):
+    for filter in filters.filters:
+        if filter.field == 'discord_id':
+            filter.field = 'extra'
+            filter.nested = ['discord_id']
+    filters.filters.append(
+        Filter(field='extra', nested=['discord_id'], values=['null'], op=Operator.NE)
     )
-    users = await get_usermanager_users(bot_settings.admin,
-                                        filters=filters)
+    users = await get_usermanager_users(bot_settings.admin, filters=filters)
     results = []
     for user in users:
-        discord_id = user.extra['discord_id']
         user_dict = user.dict()
+        user_dict['discord_id'] = user.extra['discord_id']
         user_dict['avatar_url'] = user.extra.get('discord_avatar_url')
-        user_dict['discord_id'] = discord_id
         results.append(user_dict)
-
     return results
-
-
-@discordbot_api.get("/users/{user_id}", status_code=HTTPStatus.OK)
-async def api_discordbot_user(user_id, wallet: WalletTypeInfo = Depends(get_key_type)):
-    user = await get_discordbot_user(user_id)
-    if user:
-        return user.dict()
-
-
-# Wallets
-
-
-@discordbot_api.get("/wallets")
-async def api_discordbot_wallets(
-    wallet: WalletTypeInfo = Depends(get_key_type),
-):
-    admin_id = wallet.wallet.user
-    return await get_discordbot_wallets(admin_id)
-
-
-@discordbot_api.get("/transactions/{wallet_id}")
-async def api_discordbot_wallet_transactions(
-    wallet_id, wallet: WalletTypeInfo = Depends(get_key_type)
-):
-    return await get_discordbot_wallet_transactions(wallet_id)
-
-
-@discordbot_api.get("/wallets/{user_id}")
-async def api_discordbot_users_wallets(
-    user_id, wallet: WalletTypeInfo = Depends(get_key_type)
-):
-    return await get_discordbot_users_wallets(user_id)
 
 
 discordbot_ext.include_router(discordbot_api)

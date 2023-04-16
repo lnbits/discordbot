@@ -1,5 +1,6 @@
 import asyncio
 
+import discord.utils
 from bot.client import create_client
 from httpx import AsyncClient
 
@@ -23,6 +24,8 @@ async def run():
                                            key=settings.lnbits_admin_key,
                                            extension='discordbot')
             settings.discord_bot_token = bot['token']
+
+        discord.utils.setup_logging()
 
         async with client:
             await client.start(settings.discord_bot_token)
