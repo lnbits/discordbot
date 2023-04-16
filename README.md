@@ -11,9 +11,37 @@ The intended usage of this extension is to connect it to a specifically designed
 
 ## Setup
 
-This bot can target [lnbits.com](https://lnbits.com) or a self hosted instance.
+### Running on lnbits
 
-To setup and run the bot instructions are located [here](https://github.com/chrislennon/lnbits-discord-bot#installation)
+Install this extension onto your lnbits node and create a bot configuration.
+Make sure the `standalone` option is not checked.
+
+If your token is valid you should see your bot go online.
+
+### Self hosted
+
+Install this extension onto your lnbits node and create a bot configuration.
+Make sure the `standalone` option is checked.
+
+Once you have done that, clone this repo.
+
+```shell
+git clone https://github.com/jackstar12/discordbot.git
+```
+
+You can get your environment variables by expanding the `Setup` section on the extension page of your lnbits instance.
+Paste them into an `.env` file or set them manually.
+
+Now you should be able to install and run.
+If you don't have poetry installed follow the instructions [here](https://python-poetry.org/docs/#installation)
+
+```shell
+poetry install
+poetry run standalone
+```
+
+After waiting for the bot to start you can refresh the extension page. The profile picture and name of
+your bot should show up accordingly.
 
 ## Usage
 

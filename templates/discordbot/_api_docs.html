@@ -11,19 +11,50 @@
       </h5>
       <p>
         Easily deploy a discord bot to use for your own community!
+        <a class="text-secondary" href="/docs#/discordbot">API Docs</a><br />
         <small>
-          Created by,
-          <a class="text-secondary" href="https://github.com/jacksn"
-          >jacksn</a
-          ></small
-        >
-        <br/>
-        <small>
+          Created by
+          <a class="text-secondary" href="https://github.com/jackstar12"
+            >jacksn</a
+          >
+          <br />
           Depends on User Manager, by
-          <a class="text-secondary" href="https://github.com/benarc"
-          >Ben Arc</a
-          ></small
+          <a class="text-secondary" href="https://github.com/benarc">Ben Arc</a>
+        </small>
+      </p>
+    </q-card-section>
+  </q-card>
+</q-expansion-item>
+<q-expansion-item
+  group="extras"
+  icon="swap_vertical_circle"
+  label="Setup"
+  :content-inset-level="0.5"
+>
+  <q-card>
+    <q-card-section>
+      <h5 class="text-subtitle1 q-my-none">Directly running on instance</h5>
+      <p>
+        The easiest way to get a bot running is to run it directly on your
+        instance. Easily deploy a discord bot to use for your own community!
+        <a class="text-secondary" href="/docs#/discordbot">API Docs</a><br />
+      </p>
+      <h5 class="text-subtitle1 q-my-none">Self-hosting</h5>
+      <p>
+        If you want more control or don't want to add additional load to your
+        instance, you can self-host the bot.
+        <a
+          class="text-secondary"
+          href="https://github.com/jackstar12/discordbot"
+          >Details here</a
         >
+        <br />
+        To connect to this instance you can use this as your .env
+        <code>
+          LNBITS_URL={{request.base_url}}<br />
+          {% raw %} LNBITS_ADMIN_KEY={{g.user.wallets[0].adminkey}}<br />
+          {% endraw %} DATA_FOLDER=./data <br />
+        </code>
       </p>
     </q-card-section>
   </q-card>

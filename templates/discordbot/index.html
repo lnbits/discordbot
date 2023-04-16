@@ -1,63 +1,73 @@
-{% extends "base.html" %} {% from "macros.jinja" import window_vars with context %} {% block page %}
+{% extends "base.html" %} {% from "macros.jinja" import window_vars with context
+%} {% block page %}
 
-  <q-dialog v-model="createBotDialog.show" position="top">
-    <q-card class="q-pa-lg q-pt-xl lnbits__dialog-card">
-      <q-form @submit="sendCreateBotDialog" class="q-gutter-md">
-        <q-input
-          filled
-          dense
-          v-model.trim="createBotDialog.data.token"
-          type="text"
-          label="Bot Token"
-        ></q-input>
-        <div class="row q-mt-lg">
-          <q-btn
-            v-if="createBotDialog.data.id"
-            unelevated
-            color="primary"
-            type="submit"
+<q-dialog v-model="createBotDialog.show" position="top">
+  <q-card class="q-pa-lg q-pt-xl lnbits__dialog-card">
+    <q-form @submit="sendCreateBotDialog" class="q-gutter-md">
+      <q-input
+        filled
+        dense
+        v-model.trim="createBotDialog.data.token"
+        type="text"
+        label="Bot Token"
+      ></q-input>
+      <q-checkbox
+        v-model.trim="createBotDialog.data.standalone"
+        label="Standalone"
+        dense
+      ></q-checkbox>
+      <div class="row q-mt-lg">
+        <q-btn
+          v-if="createBotDialog.data.id"
+          unelevated
+          color="primary"
+          type="submit"
           >Update Bot
-          </q-btn>
-          <q-btn
-            v-else
-            unelevated
-            color="primary"
-            :disable="createBotDialog.data.token == null"
-            type="submit"
+        </q-btn>
+        <q-btn
+          v-else
+          unelevated
+          color="primary"
+          :disable="createBotDialog.data.token == null"
+          type="submit"
           >Create Bot
-          </q-btn>
-          <q-btn v-close-popup flat color="grey" class="q-ml-auto">Cancel</q-btn>
-        </div>
-      </q-form>
-    </q-card>
-  </q-dialog>
+        </q-btn>
+        <q-btn v-close-popup flat color="grey" class="q-ml-auto">Cancel</q-btn>
+      </div>
+    </q-form>
+  </q-card>
+</q-dialog>
 
-  <div class="row q-col-gutter-md">
-    <div class="col-12 col-md-8 col-lg-7 q-gutter-y-md">
-      <q-card>
-        <q-card-section>
-          <h5 class="text-subtitle1 q-my-none">Bot</h5>
-          {% raw %}
-          <div v-if="botState != undefined">
-            <div class="row q-gutter-md q-mt-sm q-mb-md">
-              <q-avatar round>
-                <img :src="botState.avatar_url" alt="Bot Logo"/>
-              </q-avatar>
-              <div class="column q-ml-md">
-                <div class="text-h6 text-bold">{{ botState.name }}</div>
-                <div class="row">
-                  <q-badge
-                    :color="botState.online ? 'green' : 'red'"
-                    round
-                    rounded
-                    class="q-mr-sm"
-                  >
-                    {{ botState.online ? 'Online' : 'Offline' }}
-                  </q-badge>
-                </div>
+<div class="row q-col-gutter-md">
+  <div class="col-12 col-md-8 col-lg-7 q-gutter-y-md">
+    <q-card>
+      <q-card-section>
+        <h5 class="text-subtitle1 q-my-none">Bot</h5>
+        {% raw %}
+        <div v-if="botState != undefined">
+          <div class="row q-gutter-md q-mt-sm q-mb-md">
+            <q-avatar round>
+              <img :src="botState.avatar_url" alt="Bot Logo" />
+            </q-avatar>
+            <div class="column q-ml-md">
+              <div class="text-h6 text-bold">
+                {{ botState.name ?? 'Unknown' }}
               </div>
-              <q-btn icon="cancel" color="red" flat @click="deleteBot"/>
+              <div class="row">
+                <q-badge
+                  :color="botState.standalone ? 'blue' : botState.online ? 'green' : 'red'"
+                  round
+                  rounded
+                  class="q-mr-sm"
+                >
+                  {{ botState.standalone ? 'Standalone' : botState.online ?
+                  'Online' : 'Offline' }}
+                </q-badge>
+              </div>
             </div>
+            <q-btn icon="cancel" color="red" flat @click="deleteBot" />
+          </div>
+          <div v-if="!botState.standalone">
             <q-btn
               color="green"
               :disable="botState.online == true"
@@ -73,350 +83,352 @@
               Stop
             </q-btn>
           </div>
-          {% endraw %}
-          <div v-else>
-            <q-btn color="primary" @click="createBotDialog.show = true">
-              Create
+        </div>
+        {% endraw %}
+        <div v-else>
+          <q-btn color="primary" @click="createBotDialog.show = true">
+            Create
+          </q-btn>
+        </div>
+      </q-card-section>
+    </q-card>
+
+    <q-card>
+      <q-card-section>
+        <div class="row items-center no-wrap q-mb-md">
+          <div class="col">
+            <h5 class="text-subtitle1 q-my-none">Users</h5>
+          </div>
+          <div class="col-auto">
+            <q-btn flat color="grey" @click="exportUsersCSV"
+              >Export to CSV
             </q-btn>
           </div>
-        </q-card-section>
-      </q-card>
-
-      <q-card>
-        <q-card-section>
-          <div class="row items-center no-wrap q-mb-md">
-            <div class="col">
-              <h5 class="text-subtitle1 q-my-none">Users</h5>
-            </div>
-            <div class="col-auto">
-              <q-btn flat color="grey" @click="exportUsersCSV"
-              >Export to CSV
-              </q-btn>
-            </div>
-          </div>
-          <q-table
-            dense
-            flat
-            :data="users"
-            row-key="id"
-            :columns="usersTable.columns"
-            :pagination.sync="usersTable.pagination"
-          >
-            {% raw %}
-            <template v-slot:header="props">
-              <q-tr :props="props">
-                <q-th v-for="col in props.cols" :key="col.name" :props="props">
-                  {{ col.label }}
-                </q-th>
-                <q-th auto-width></q-th>
-              </q-tr>
-            </template>
-            <template v-slot:body="props">
-              <q-tr :props="props">
-                <q-td v-for="col in props.cols" :key="col.name" :props="props">
-                  <q-avatar v-if="col.name == 'profile'" round size="md">
-                    <img :src="col.value" alt="User Profile"/>
-                  </q-avatar>
-                  <div v-else>{{ col.value }}</div>
-                </q-td>
-                <q-td auto-width>
-                  <q-btn
-                    flat
-                    dense
-                    size="xs"
-                    @click="deleteUser(props.row.id)"
-                    icon="cancel"
-                    color="pink"
-                  ></q-btn>
-                </q-td>
-              </q-tr>
-            </template>
-            {% endraw %}
-          </q-table>
-        </q-card-section>
-      </q-card>
-    </div>
-
-    <div class="col-12 col-md-4 col-lg-5 q-gutter-y-md">
-      <q-card>
-        <q-card-section>
-          <h6 class="text-subtitle1 q-my-none">
-            {{ SITE_TITLE }} Discord Bot Extension
-          </h6>
-        </q-card-section>
-        <q-card-section class="q-pa-none">
-          <q-separator></q-separator>
-          <q-list> {% include "discordbot/_api_docs.html" %} </q-list>
-        </q-card-section>
-      </q-card>
-    </div>
+        </div>
+        <q-table
+          dense
+          flat
+          :data="users"
+          row-key="id"
+          :columns="usersTable.columns"
+          :pagination.sync="usersTable.pagination"
+        >
+          {% raw %}
+          <template v-slot:header="props">
+            <q-tr :props="props">
+              <q-th v-for="col in props.cols" :key="col.name" :props="props">
+                {{ col.label }}
+              </q-th>
+              <q-th auto-width></q-th>
+            </q-tr>
+          </template>
+          <template v-slot:body="props">
+            <q-tr :props="props">
+              <q-td v-for="col in props.cols" :key="col.name" :props="props">
+                <q-avatar v-if="col.name == 'profile'" round size="md">
+                  <img :src="col.value" alt="User Profile" />
+                </q-avatar>
+                <div v-else>{{ col.value }}</div>
+              </q-td>
+              <q-td auto-width>
+                <q-btn
+                  flat
+                  dense
+                  size="xs"
+                  @click="deleteUser(props.row.id)"
+                  icon="cancel"
+                  color="pink"
+                ></q-btn>
+              </q-td>
+            </q-tr>
+          </template>
+          {% endraw %}
+        </q-table>
+      </q-card-section>
+    </q-card>
   </div>
+
+  <div class="col-12 col-md-4 col-lg-5 q-gutter-y-md">
+    <q-card>
+      <q-card-section>
+        <h6 class="text-subtitle1 q-my-none">
+          {{ SITE_TITLE }} Discord Bot Extension
+        </h6>
+      </q-card-section>
+      <q-card-section class="q-pa-none">
+        <q-separator></q-separator>
+        <q-list> {% include "discordbot/_api_docs.html" %} </q-list>
+      </q-card-section>
+    </q-card>
+  </div>
+</div>
 
 {% endblock %} {% block scripts %} {{ window_vars(user) }}
 
-  <script>
-    var someMapObject = obj => {
-      obj._data = _.clone(obj)
-      obj.date = Quasar.utils.date.formatDate(
-        new Date(obj.time * 1000),
-        'YYYY-MM-DD HH:mm'
-      )
-      // here you can do something with the mapped data
-      return obj
-    }
-    new Vue({
-      el: '#vue',
-      mixins: [windowMixin],
-      data: function () {
-        return {
-          ///// Declare models/variables /////
-          protocol: window.location.protocol,
-          location: '//' + window.location.hostname,
-          createBotDialog: {
-            show: false,
-            data: {}
-          },
-          botState: undefined,
-          someBool: true,
-
-          wallets: [],
-          users: [],
-
-          usersTable: {
-            columns: [
-              {
-                name: 'profile',
-                align: 'left',
-                label: 'Profile',
-                field: row => row.avatar_url
-              },
-              {name: 'name', align: 'left', label: 'Username', field: 'name'},
-              {
-                name: 'discord_id',
-                align: 'left',
-                label: 'Discord ID',
-                field: 'discord_id'
-              },
-              {name: 'id', align: 'left', label: 'User ID', field: 'id'}
-            ],
-            pagination: {
-              rowsPerPage: 10
-            }
-          },
-          walletsTable: {
-            columns: [
-              {name: 'id', align: 'left', label: 'ID', field: 'id'},
-              {name: 'name', align: 'left', label: 'Name', field: 'name'},
-              {name: 'user', align: 'left', label: 'User', field: 'user'},
-              {
-                name: 'adminkey',
-                align: 'left',
-                label: 'Admin Key',
-                field: 'adminkey'
-              },
-              {name: 'inkey', align: 'left', label: 'Invoice Key', field: 'inkey'}
-            ],
-            pagination: {
-              rowsPerPage: 10
-            }
-          },
-          walletDialog: {
-            show: false,
-            data: {}
-          },
-          userDialog: {
-            show: false,
-            data: {}
-          },
-
-          splitterModel: 20,
-          exampleData: [],
-          tab: 'frameworks',
-          framworktab: 'fastapi',
-          usefultab: 'magicalg'
-        }
-      },
-      ///// Where functions live /////
-      methods: {
-        api({method, path, data, shouldThrow}) {
-          return LNbits.api
-            .request(
-              method, // Type of request
-              '/discordbot/api/v1' + path, // URL of the endpoint
-              this.g.user.wallets[0].adminkey, // Often endpoints require a key,
-              data
-            )
-            .catch(error => {
-              if (!shouldThrow || shouldThrow(error.response)) {
-                LNbits.utils.notifyApiError(error) // Error will be passed to the frontend
-              }
-            })
-        },
-        sendCreateBotDialog() {
-          this.api({
-            method: 'POST',
-            path: '/bot',
-            data: {
-              bot_token: this.createBotDialog.data.token
-            }
-          }).then(response => {
-            this.botState = response.data
-            this.createBotDialog.show = false
-            this.getUsers()
-          })
-
-          console.log(this.createBotDialog)
-        },
-
-        getStatus() {
-          this.api({
-            path: '/bot',
-            shouldThrow: response => response.status !== 400
-          }).then(response => {
-            this.botState = response.data
-          })
-        },
-
-        startBot() {
-          this.api({path: '/bot/start'}).then(response => {
-            this.botState = response.data
-          })
-        },
-
-        stopBot() {
-          this.api({path: '/bot/stop'}).then(response => {
-            this.botState = response.data
-          })
-        },
-
-        deleteBot() {
-          this.api({method: 'DELETE', path: '/bot'}).then(response => {
-            this.botState = undefined
-          })
-        },
-
-        getUsers() {
-          this.api({
-            path: '/users',
-            shouldThrow: response => response.status !== 400
-          }).then(response => {
-            this.users = response.data
-          })
-        },
-
-        deleteUser: function (userId) {
-          console.log(userId)
-          LNbits.utils
-            .confirmDialog('Are you sure you want to delete this User link?')
-            .onOk(() => {
-              LNbits.api
-                .request(
-                  'DELETE',
-                  '/usermanager/api/v1/users/' + userId,
-                  this.g.user.wallets[0].adminkey
-                )
-                .then(function (response) {
-                  this.users = _.reject(this.users, function (obj) {
-                    return obj.id === userId
-                  })
-                  this.getWallets()
-                })
-                .catch(function (error) {
-                  LNbits.utils.notifyApiError(error)
-                })
-            })
-        },
-        exportUsersCSV: function () {
-          LNbits.utils.exportCSV(this.usersTable.columns, this.users)
-        },
-        ///////////////Wallets////////////////////////////
-
-        getWallets: function () {
-          var self = this
-
-          LNbits.api
-            .request(
-              'GET',
-              '/usermanager/api/v1/wallets',
-              this.g.user.wallets[0].adminkey
-            )
-            .then(function (response) {
-              self.wallets = response.data.map(function (obj) {
-                return mapUserManager(obj)
-              })
-            })
-        },
-        openWalletUpdateDialog: function (linkId) {
-          var link = _.findWhere(this.users, {id: linkId})
-
-          this.walletDialog.data = _.clone(link._data)
-          this.walletDialog.show = true
-        },
-        sendWalletFormData: function () {
-          if (this.walletDialog.data.id) {
-          } else {
-            var data = {
-              user_id: this.walletDialog.data.user,
-              admin_id: this.g.user.id,
-              wallet_name: this.walletDialog.data.walname
-            }
-          }
-
-          {
-            this.createWallet(data)
+<script>
+  var someMapObject = obj => {
+    obj._data = _.clone(obj)
+    obj.date = Quasar.utils.date.formatDate(
+      new Date(obj.time * 1000),
+      'YYYY-MM-DD HH:mm'
+    )
+    // here you can do something with the mapped data
+    return obj
+  }
+  new Vue({
+    el: '#vue',
+    mixins: [windowMixin],
+    data: function () {
+      return {
+        ///// Declare models/variables /////
+        protocol: window.location.protocol,
+        location: '//' + window.location.hostname,
+        createBotDialog: {
+          show: false,
+          data: {
+            token: null,
+            standalone: true
           }
         },
-        createWallet: function (data) {
-          var self = this
-          LNbits.api
-            .request(
-              'POST',
-              '/usermanager/api/v1/wallets',
-              this.g.user.wallets[0].inkey,
-              data
-            )
-            .then(function (response) {
-              self.wallets.push(mapUserManager(response.data))
-              self.walletDialog.show = false
-              self.walletDialog.data = {}
-              data = {}
-            })
-            .catch(function (error) {
-              LNbits.utils.notifyApiError(error)
-            })
-        },
-        deleteWallet: function (userId) {
-          var self = this
+        botState: undefined,
+        someBool: true,
 
-          LNbits.utils
-            .confirmDialog('Are you sure you want to delete this wallet link?')
-            .onOk(function () {
-              LNbits.api
-                .request(
-                  'DELETE',
-                  '/usermanager/api/v1/wallets/' + userId,
-                  self.g.user.wallets[0].adminkey
-                )
-                .then(function (response) {
-                  self.wallets = _.reject(self.wallets, function (obj) {
-                    return obj.id == userId
-                  })
-                })
-                .catch(function (error) {
-                  LNbits.utils.notifyApiError(error)
-                })
-            })
+        wallets: [],
+        users: [],
+
+        usersTable: {
+          columns: [
+            {
+              name: 'profile',
+              align: 'left',
+              label: 'Profile',
+              field: row => row.avatar_url
+            },
+            {name: 'name', align: 'left', label: 'Username', field: 'name'},
+            {
+              name: 'discord_id',
+              align: 'left',
+              label: 'Discord ID',
+              field: 'discord_id'
+            },
+            {name: 'id', align: 'left', label: 'User ID', field: 'id'}
+          ],
+          pagination: {
+            rowsPerPage: 10
+          }
         },
-        exportWalletsCSV: function () {
-          LNbits.utils.exportCSV(this.walletsTable.columns, this.wallets)
-        }
-      },
-      ///// To run on startup /////
-      created: function () {
-        self = this // Often used to run a real object, rather than the event (all a bit confusing really)
-        this.getStatus()
-        this.getUsers()
+        walletsTable: {
+          columns: [
+            {name: 'id', align: 'left', label: 'ID', field: 'id'},
+            {name: 'name', align: 'left', label: 'Name', field: 'name'},
+            {name: 'user', align: 'left', label: 'User', field: 'user'},
+            {
+              name: 'adminkey',
+              align: 'left',
+              label: 'Admin Key',
+              field: 'adminkey'
+            },
+            {name: 'inkey', align: 'left', label: 'Invoice Key', field: 'inkey'}
+          ],
+          pagination: {
+            rowsPerPage: 10
+          }
+        },
+        walletDialog: {
+          show: false,
+          data: {}
+        },
+        userDialog: {
+          show: false,
+          data: {}
+        },
+
+        splitterModel: 20,
+        exampleData: [],
+        tab: 'frameworks',
+        framworktab: 'fastapi',
+        usefultab: 'magicalg'
       }
-    })
-  </script>
+    },
+    ///// Where functions live /////
+    methods: {
+      api({method, path, data, shouldThrow}) {
+        return LNbits.api
+          .request(
+            method, // Type of request
+            '/discordbot/api/v1' + path, // URL of the endpoint
+            this.g.user.wallets[0].adminkey, // Often endpoints require a key,
+            data
+          )
+          .catch(error => {
+            if (!shouldThrow || shouldThrow(error.response)) {
+              LNbits.utils.notifyApiError(error) // Error will be passed to the frontend
+            }
+          })
+      },
+      sendCreateBotDialog() {
+        this.api({
+          method: 'POST',
+          path: '/bot',
+          data: this.createBotDialog.data
+        }).then(response => {
+          this.botState = response.data
+          this.createBotDialog.show = false
+          this.getUsers()
+        })
+
+        console.log(this.createBotDialog)
+      },
+
+      getStatus() {
+        this.api({
+          path: '/bot',
+          shouldThrow: response => response.status !== 400
+        }).then(response => {
+          this.botState = response.data
+        })
+      },
+
+      startBot() {
+        this.api({path: '/bot/start'}).then(response => {
+          this.botState = response.data
+        })
+      },
+
+      stopBot() {
+        this.api({path: '/bot/stop'}).then(response => {
+          this.botState = response.data
+        })
+      },
+
+      deleteBot() {
+        this.api({method: 'DELETE', path: '/bot'}).then(response => {
+          this.botState = undefined
+        })
+      },
+
+      getUsers() {
+        this.api({
+          path: '/users',
+          shouldThrow: response => response.status !== 400
+        }).then(response => {
+          this.users = response.data
+        })
+      },
+
+      deleteUser: function (userId) {
+        console.log(userId)
+        LNbits.utils
+          .confirmDialog('Are you sure you want to delete this User link?')
+          .onOk(() => {
+            LNbits.api
+              .request(
+                'DELETE',
+                '/usermanager/api/v1/users/' + userId,
+                this.g.user.wallets[0].adminkey
+              )
+              .then(function (response) {
+                this.users = _.reject(this.users, function (obj) {
+                  return obj.id === userId
+                })
+                this.getWallets()
+              })
+              .catch(function (error) {
+                LNbits.utils.notifyApiError(error)
+              })
+          })
+      },
+      exportUsersCSV: function () {
+        LNbits.utils.exportCSV(this.usersTable.columns, this.users)
+      },
+      ///////////////Wallets////////////////////////////
+
+      getWallets: function () {
+        var self = this
+
+        LNbits.api
+          .request(
+            'GET',
+            '/usermanager/api/v1/wallets',
+            this.g.user.wallets[0].adminkey
+          )
+          .then(function (response) {
+            self.wallets = response.data.map(function (obj) {
+              return mapUserManager(obj)
+            })
+          })
+      },
+      openWalletUpdateDialog: function (linkId) {
+        var link = _.findWhere(this.users, {id: linkId})
+
+        this.walletDialog.data = _.clone(link._data)
+        this.walletDialog.show = true
+      },
+      sendWalletFormData: function () {
+        if (this.walletDialog.data.id) {
+        } else {
+          var data = {
+            user_id: this.walletDialog.data.user,
+            admin_id: this.g.user.id,
+            wallet_name: this.walletDialog.data.walname
+          }
+        }
+
+        {
+          this.createWallet(data)
+        }
+      },
+      createWallet: function (data) {
+        var self = this
+        LNbits.api
+          .request(
+            'POST',
+            '/usermanager/api/v1/wallets',
+            this.g.user.wallets[0].inkey,
+            data
+          )
+          .then(function (response) {
+            self.wallets.push(mapUserManager(response.data))
+            self.walletDialog.show = false
+            self.walletDialog.data = {}
+            data = {}
+          })
+          .catch(function (error) {
+            LNbits.utils.notifyApiError(error)
+          })
+      },
+      deleteWallet: function (userId) {
+        var self = this
+
+        LNbits.utils
+          .confirmDialog('Are you sure you want to delete this wallet link?')
+          .onOk(function () {
+            LNbits.api
+              .request(
+                'DELETE',
+                '/usermanager/api/v1/wallets/' + userId,
+                self.g.user.wallets[0].adminkey
+              )
+              .then(function (response) {
+                self.wallets = _.reject(self.wallets, function (obj) {
+                  return obj.id == userId
+                })
+              })
+              .catch(function (error) {
+                LNbits.utils.notifyApiError(error)
+              })
+          })
+      },
+      exportWalletsCSV: function () {
+        LNbits.utils.exportCSV(this.walletsTable.columns, this.wallets)
+      }
+    },
+    ///// To run on startup /////
+    created: function () {
+      self = this // Often used to run a real object, rather than the event (all a bit confusing really)
+      this.getStatus()
+      this.getUsers()
+    }
+  })
+</script>
 {% endblock %}

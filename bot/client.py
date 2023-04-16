@@ -1,49 +1,40 @@
-import asyncio
-import io
+from __future__ import annotations
+
 import os.path
 import random
-from typing import Optional
+from typing import TYPE_CHECKING, Union
 
 import discord
 import discord.utils
 import pyqrcode
 from discord import app_commands
-from fastapi import HTTPException
-from httpx import AsyncClient
-from loguru import logger
+from httpx import AsyncClient, HTTPStatusError
 
-from lnbits.core import CreateInvoiceData, api_payments_create_invoice
-from lnbits.core.crud import get_wallet, update_user_extension
-from lnbits.requestvars import g
-from lnbits.settings import settings
-
-from ..crud import get_discord_wallet, get_or_create_wallet
-from ..models import BotSettings
-from ..settings import discord_settings
-from .ui import (
-    ClaimButton,
-    PayButton,
-    WalletButton,
-    get_amount_str,
-    get_balance_str,
-    try_send_payment_notification,
-)
+from .api import LnbitsAPI
+from .models import Wallet
+from .settings import discord_settings
+from .ui import ClaimButton, CoinFlipView, PayButton, WalletButton, get_amount_str
 
 # discord.utils.setup_logging()
 
 
 if discord_settings.discord_dev_guild:
+    discord.utils.setup_logging()
     DEV_GUILD = discord.Object(id=discord_settings.discord_dev_guild)
 else:
     DEV_GUILD = None
 
+DiscordUser = Union[discord.Member, discord.User]
+
 
 class LnbitsClient(discord.Client):
-    def __init__(self, *, admin: str, http: AsyncClient, **options):
+    def __init__(self, *, admin_key: str, http: AsyncClient, lnbits_url: str, data_folder: str, **options):
         super().__init__(**options)
-        self.admin = admin
+        self.admin_key = admin_key
         self.tree = app_commands.CommandTree(self)
-        self.lnbits_http = http
+        self.lnbits_url = lnbits_url
+        self.data_folder = data_folder
+        self.api = LnbitsAPI(admin_key=admin_key, http=http, lnbits_url=lnbits_url)
 
     # In this basic example, we just synchronize the app commands to one guild.
     # Instead of specifying a guild to every command, we copy over our global commands instead.
@@ -53,143 +44,93 @@ class LnbitsClient(discord.Client):
         self.tree.copy_global_to(guild=DEV_GUILD)
         await self.tree.sync(guild=DEV_GUILD)
 
-    async def api_request(self,
-                          method: str,
-                          path: str,
-                          key: str,
-                          extension: str = None,
-                          **kwargs):
-        self.lnbits_http.headers['X-API-KEY'] = key
+    async def try_send_payment_notification(self,
+                                            interaction: LnbitsInteraction,
+                                            sender: Union[discord.Member, discord.User],
+                                            receiver: Union[discord.Member, discord.User],
+                                            amount: int,
+                                            memo: str):
+        receiver_wallet = await self.api.get_user_wallet(receiver)
+        new_balance = await self.api.get_user_balance(receiver)
 
-        response = await self.lnbits_http.request(
-            method,
-            url=g().base_url + ('/' + extension if extension else '') + '/api/v1' + path,
-            **kwargs
+        embed = discord.Embed(
+            title='New Payment',
+            color=discord.Color.yellow(),
+            description=f'You received **{get_amount_str(amount)}** from {sender.mention}\n\n'
+                        f'The payment happened [here]({(await interaction.original_response()).jump_url})'
+        ).add_field(
+            name='New Balance', value=get_amount_str(new_balance)
         )
 
-        return response.json()
-
-    async def send_payment(self,
-                           sender: discord.Member,
-                           receiver: discord.Member,
-                           amount: int,
-                           memo: str):
-        sender_wallet = await get_discord_wallet(str(sender.id),
-                                                 self.admin)
-
-        receiver_wallet = await get_or_create_wallet(username=receiver.name,
-                                                     discord_id=str(receiver.id),
-                                                     admin_id=self.admin)
-
-        invoice = await self.api_request('POST', '/payments',
-                                         receiver_wallet.adminkey,
-                                         json=dict(
-                                             out=False,
-                                             amount=amount,
-                                             memo=memo,
-                                             unit="sat"
-                                         ))
-
-        response = await self.api_request('POST', '/payments',
-                                          sender_wallet.adminkey,
-                                          json={
-                                              "out": True,
-                                              "bolt11": invoice["payment_request"]
-                                          })
-
-        # invoice = await api_payments_create_invoice(
-        #    CreateInvoiceData(
-        #        out=False,
-        #        amount=amount,
-        #        memo=memo,
-        #        unit="sat"
-        #    ),
-        #    receiver_wallet
-        # )
-        # await api_payments_pay_invoice(
-        #    invoice["payment_request"],
-        #    sender_wallet
-        # )
-
-        return receiver_wallet
+        if memo:
+            embed.add_field(
+                name='Memo', value=f'_{memo}_'
+            )
+        try:
+            await receiver.send(
+                embed=embed,
+                view=discord.ui.View().add_item(WalletButton(self.lnbits_url, wallet=receiver_wallet))
+            )
+        except discord.HTTPException:
+            return
 
 
 class LnbitsInteraction(discord.Interaction):
+    if TYPE_CHECKING:
+        @property
+        def client(self) -> LnbitsClient:
+            """:class:`Client`: The client that is handling this interaction.
 
-    @property
-    def client(self) -> LnbitsClient:
-        """:class:`Client`: The client that is handling this interaction.
+            Note that :class:`AutoShardedClient`, :class:`~.commands.Bot`, and
+            :class:`~.commands.AutoShardedBot` are all subclasses of client.
+            """
+            return self._client  # type: ignore
 
-        Note that :class:`AutoShardedClient`, :class:`~.commands.Bot`, and
-        :class:`~.commands.AutoShardedBot` are all subclasses of client.
-        """
-        return self._client  # type: ignore
+        @property
+        def response(self) -> discord.InteractionResponse:
+            """:class:`Client`: The client that is handling this interaction.
+
+            Note that :class:`AutoShardedClient`, :class:`~.commands.Bot`, and
+            :class:`~.commands.AutoShardedBot` are all subclasses of client.
+            """
+            return self.response  # type: ignore
 
 
 intents = discord.Intents.default()
 intents.members = True
-clients: dict[str, LnbitsClient] = {}
 
 
-def get_client(token: str) -> Optional[LnbitsClient]:
-    return clients.get(token)
-
-
-async def start_bot(bot_settings: BotSettings, http: AsyncClient):
-    token = bot_settings.bot_token
-    if token not in clients:
-        clients[token] = create_client(bot_settings, http)
-    else:
-        if clients[token].is_closed():
-            clients[token] = create_client(bot_settings, http)
-        else:
-            return clients[token]
-
-    client = clients[token]
-    await client.login(token)
-    asyncio.create_task(
-        client.connect()
+def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folder: str):
+    client = LnbitsClient(
+        intents=intents,
+        admin_key=admin_key,
+        http=http,
+        lnbits_url=lnbits_url,
+        data_folder=data_folder
     )
-    # Wait a bit for client to connect
-    waiting = 0
-    while not client.is_ready() and waiting < 5:
-        await asyncio.sleep(.25)
-        waiting += 0.25
-    return client
-
-
-async def stop_bot(bot_settings: BotSettings):
-    token = bot_settings.bot_token
-    client = clients.get(token)
-    if client:
-        await client.close()
-    return client
-
-
-def create_client(bot_settings: BotSettings, http: AsyncClient):
-    client = LnbitsClient(intents=intents, admin=bot_settings.admin, http=http)
 
     @client.event
     async def on_ready():
         print(f'Logged in as {client.user} (ID: {client.user.id})')
         print('------')
-
-    @client.event
-    async def on_command_error(ctx, error):
-        logger.error(error)
+        await client.api.request('PATCH', '/bot',
+                                 client.admin_key,
+                                 extension='discordbot',
+                                 json={
+                                     'name': client.user.name,
+                                     'avatar_url': client.user.display_avatar.url
+                                 })
 
     @client.tree.command(
         name="create",
         description="Create a wallet for your user"
     )
     async def create(interaction: LnbitsInteraction):
-        wallet = await get_or_create_wallet(interaction.user.name,
-                                            str(interaction.user.id),
-                                            interaction.client.admin)
+        wallet = await client.api.get_or_create_wallet(interaction.user)
 
         await interaction.response.send_message(
             content='You have a wallet!',
-            view=discord.ui.View().add_item(WalletButton(wallet=wallet)),
+            view=discord.ui.View().add_item(WalletButton(interaction.client.lnbits_url, wallet=wallet)),
             ephemeral=True
         )
 
@@ -200,20 +141,19 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
     async def balance(interaction: LnbitsInteraction):
         # await interaction.response.defer(ephemeral=True)
 
-        wallet = await get_discord_wallet(str(interaction.user.id),
-                                          interaction.client.admin)
+        wallet = await client.api.get_user_wallet(interaction.user)
 
-        detailed_wallet = await get_wallet(wallet.id)
+        balance = await client.api.get_user_balance(interaction.user)
 
         await interaction.response.send_message(
             ephemeral=True,
-            content=f'Your balance: **{get_balance_str(detailed_wallet)}**',
-            view=discord.ui.View().add_item(WalletButton(wallet=wallet))
+            content=f'Your balance: **{get_amount_str(balance)}**',
+            view=discord.ui.View().add_item(WalletButton(interaction.client.lnbits_url, wallet=wallet))
         )
 
     @client.tree.command(
         name="tip",
-        description="Check the balance of your wallet"
+        description="Send some sats to another user"
     )
     @app_commands.describe(
         member='Who do you want to tip?',
@@ -225,9 +165,9 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
         # await interaction.response.defer(ephemeral=True)
 
         try:
-            receiver_wallet = await interaction.client.send_payment(interaction.user, member, amount, memo)
-        except HTTPException as e:
-            await interaction.response.send_message(content=e.detail)
+            receiver_wallet = await client.api.send_payment(interaction.user, member, amount, memo)
+        except HTTPStatusError as e:
+            await interaction.response.send_message(content=e.response.content)
             return
 
         embed = discord.Embed(
@@ -240,7 +180,7 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
 
         await interaction.response.send_message(embed=embed)
 
-        await try_send_payment_notification(interaction, interaction.user, member, amount, memo, receiver_wallet.id)
+        await client.try_send_payment_notification(interaction, interaction.user, member, amount, memo)
 
     @client.tree.command(
         name="donate",
@@ -253,23 +193,28 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
     @app_commands.guild_only()
     async def donate(interaction: LnbitsInteraction, amount: int, description: str):
 
-        wallet = await get_discord_wallet(discord_id=str(interaction.user.id),
-                                          admin_id=interaction.client.admin)
+        wallet = await client.api.get_user_wallet(interaction.user)
 
-        await update_user_extension(user_id=wallet.user, extension='withdraw', active=True)
+        await client.api.request('POST', '/extensions',
+                                 extension='usermanager',
+                                 params={
+                                     'userid': wallet.user,
+                                     'extension': 'withdraw',
+                                     'active': True
+                                 })
 
-        resp = await interaction.client.api_request(method='post',
-                                                    path='/links',
-                                                    extension='withdraw',
-                                                    key=wallet.adminkey,
-                                                    json={
-                                                        "title": description,
-                                                        "min_withdrawable": amount,
-                                                        "max_withdrawable": amount,
-                                                        "uses": 1,
-                                                        "wait_time": 1,
-                                                        "is_unique": True
-                                                    })
+        resp = await client.api.request(method='post',
+                                        path='/links',
+                                        extension='withdraw',
+                                        key=wallet.adminkey,
+                                        json={
+                                            "title": description,
+                                            "min_withdrawable": amount,
+                                            "max_withdrawable": amount,
+                                            "uses": 1,
+                                            "wait_time": 1,
+                                            "is_unique": True
+                                        })
 
         await interaction.response.send_message(
             embed=discord.Embed(
@@ -299,21 +244,29 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
     @app_commands.guild_only()
     async def payme(interaction: LnbitsInteraction, amount: int, description: str):
 
-        wallet = await get_discord_wallet(discord_id=str(interaction.user.id),
-                                          admin_id=interaction.client.admin)
+        wallet = await client.api.get_user_wallet(interaction.user)
 
-        invoice = await api_payments_create_invoice(
-            CreateInvoiceData(
-                out=False,
-                amount=amount,
-                memo=description
-            ),
-            wallet
-        )
+        # invoice = await api_payments_create_invoice(
+        #    CreateInvoiceData(
+        #        out=False,
+        #        amount=amount,
+        #        memo=description
+        #    ),
+        #    wallet
+        # )
+
+        invoice = await client.api.request('POST', '/payments',
+                                           wallet.adminkey,
+                                           json={
+                                               'out': False,
+                                               'amount': amount,
+                                               'memo': description,
+                                               'unit': "sat"
+                                           })
 
         qr_code = pyqrcode.create(invoice['payment_request'])
 
-        temp_path = os.path.join(settings.lnbits_data_folder, 'temp.png')
+        temp_path = os.path.join(client.data_folder, 'temp.png')
         qr_code.png(file=temp_path, scale=5)
 
         await interaction.response.send_message(
@@ -360,10 +313,10 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
         parsedRoles = []
         if roles:
             split = roles.split(' ')
-            for member in split:
-                if len(member) > 4:
+            for raw_member in split:
+                if len(raw_member) > 4:
                     # '<@&937457548427141151>'
-                    id = int(member[3:-1])
+                    id = int(raw_member[3:-1])
                     result = interaction.guild.get_role(id)
                     # if not result:
                     #    result = await interaction.guild.fetch_roles(id)
@@ -376,7 +329,7 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
             # interaction.guild.query_members()
             # await interaction.guild.fetch_members()
 
-            validMembers = [
+            validMembers: list[discord.Member] = [
                 member for member in interaction.channel.members
                 if (
                     (any(role in member.roles for role in parsedRoles) or not parsedRoles)
@@ -385,12 +338,9 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
                 )
             ]
 
-        wallet = await get_discord_wallet(discord_id=str(interaction.user.id),
-                                          admin_id=interaction.client.admin)
+        balance = await client.api.get_user_balance(interaction.user)
 
-        details = await get_wallet(wallet.id)
-
-        if details.balance_msat < amount * users:
+        if not balance < amount:
             await interaction.response.send_message(content='You do not have enough balance', ephemeral=True)
 
         await interaction.response.defer()
@@ -402,10 +352,10 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
 
             member = validMembers.pop(idx)
             if member:
-                wallet = await interaction.client.send_payment(interaction.user,
-                                                               member,
-                                                               amount,
-                                                               description)
+                wallet = await client.api.send_payment(interaction.user,
+                                                       member,
+                                                       amount,
+                                                       description)
 
                 membersSent.append(member)
                 users -= 1
@@ -421,11 +371,30 @@ def create_client(bot_settings: BotSettings, http: AsyncClient):
         )
 
         for member in membersSent:
-            await try_send_payment_notification(interaction,
-                                                interaction.user,
-                                                member,
-                                                amount,
-                                                description,
-                                                receiver_wallet_id=wallet.id)
+            await client.try_send_payment_notification(interaction,
+                                                       interaction.user,
+                                                       member,
+                                                       amount,
+                                                       description)
+
+    @client.tree.command(
+        description='Creates an coinflip everyone can join'
+    )
+    @app_commands.describe(
+        entry='The entry price',
+        description='Whats it about?',
+    )
+    @app_commands.guild_only()
+    async def coinflip(interaction: LnbitsInteraction, entry: int, description: str):
+        view = CoinFlipView(
+            initiator=interaction.user,
+            entry=entry,
+            description=description
+        )
+
+        await interaction.response.send_message(
+            embed=view.get_current_embed(),
+            view=view
+        )
 
     return client

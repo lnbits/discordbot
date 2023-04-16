@@ -1,44 +1,48 @@
 from http import HTTPStatus
-from typing import Optional
 
-import httpx
 from fastapi import APIRouter, Depends, Query
 from starlette.exceptions import HTTPException
 
+from lnbits.db import Filter, Filters, Operator
 from lnbits.decorators import WalletTypeInfo, get_key_type, require_admin_key
+from lnbits.extensions.usermanager.crud import get_usermanager_users
 
-from ..usermanager.crud import get_usermanager_users
 from . import discordbot_ext
-from .bot.client import get_client, start_bot, stop_bot
 from .crud import (
     create_discordbot_settings,
     delete_discordbot_settings,
-    get_all_discordbot_settings,
     get_discordbot_settings,
     get_discordbot_user,
     get_discordbot_users_wallets,
     get_discordbot_wallet_transactions,
     get_discordbot_wallets,
+    update_discordbot_settings,
 )
-from .models import BotInfo, BotSettings, CreateBotSettings, DiscordUser
+from .models import (
+    BotInfo,
+    BotSettings,
+    CreateBotSettings,
+    DiscordUser,
+    UpdateBotSettings,
+)
+
+try:
+    from tasks import get_client, start_bot, stop_bot
+    can_run_bot = True
+except ImportError:
+    def get_client(token: str):
+        return None
+
+    async def start_bot(bot_settings: BotSettings):
+        return None
+
+    async def stop_bot(bot_settings: BotSettings):
+        return None
+
+    can_run_bot = False
+
 
 discordbot_api: APIRouter = APIRouter(prefix="/api/v1", tags=["discordbot"])
-
-http_client: Optional[httpx.AsyncClient] = None
-
-
-@discordbot_api.on_event('startup')
-async def on_startup():
-    global http_client
-    http_client = httpx.AsyncClient()
-    for settings in await get_all_discordbot_settings():
-        await start_bot(settings, http_client)
-
-
-@discordbot_api.on_event('shutdown')
-async def on_startup():
-    global http_client
-    await http_client.aclose()
 
 
 async def require_bot_settings(wallet_info: WalletTypeInfo = Depends(require_admin_key)):
@@ -47,6 +51,11 @@ async def require_bot_settings(wallet_info: WalletTypeInfo = Depends(require_adm
         raise HTTPException(
             status_code=400,
             detail='No bot created'
+        )
+    if not settings.standalone and not can_run_bot:
+        raise HTTPException(
+            status_code=400,
+            detail='Can not run discord bots on this instance'
         )
     return settings
 
@@ -59,70 +68,86 @@ async def api_extension_delete(usr: str = Query(...)):
         await delete_discordbot_settings(settings.admin)
 
 
-
 # Users
 
 
-@discordbot_api.get("/bot", status_code=HTTPStatus.OK, response_model=BotInfo)
-async def api_bot_status(settings: BotSettings = Depends(require_bot_settings)):
-    client = get_client(settings.bot_token)
-    return BotInfo.from_client(client)
+@discordbot_api.get(
+    "/bot",
+    description="Get the current status of your registered bot",
+    status_code=HTTPStatus.OK,
+    response_model=BotInfo
+)
+async def api_bot_status(bot_settings: BotSettings = Depends(require_bot_settings)):
+    client = get_client(bot_settings.token)
+    return BotInfo.from_client(bot_settings, client)
 
 
 @discordbot_api.post(
     "/bot",
+    description="Create and start a new bot (only one per user)",
     status_code=HTTPStatus.OK,
     response_model=BotInfo
 )
 async def api_create_bot(data: CreateBotSettings,
                          wallet_type: WalletTypeInfo = Depends(require_admin_key)):
-    await create_discordbot_settings(data, wallet_type.wallet.user)
-    client = await start_bot(
-        BotSettings(admin=wallet_type.wallet.user, bot_token=data.bot_token),
-        http_client
-    )
-    return BotInfo.from_client(client)
+    bot_settings = await create_discordbot_settings(data, wallet_type.wallet.user)
+    if not bot_settings.standalone:
+        client = await start_bot(bot_settings)
+    else:
+        client = None
+    return BotInfo.from_client(bot_settings, client)
 
 
 @discordbot_api.delete(
     "/bot",
     status_code=HTTPStatus.OK,
 )
-async def api_delete_bot(settings: BotSettings = Depends(require_bot_settings)):
-    await stop_bot(settings)
-    await delete_discordbot_settings(settings.admin)
+async def api_delete_bot(bot_settings: BotSettings = Depends(require_bot_settings)):
+    if not bot_settings.standalone:
+        await stop_bot(bot_settings)
+    await delete_discordbot_settings(bot_settings.admin)
+
+
+@discordbot_api.patch(
+    "/bot",
+    status_code=HTTPStatus.OK,
+)
+async def api_update_bot(data: UpdateBotSettings, bot_settings: BotSettings = Depends(require_bot_settings)):
+    bot_settings = await update_discordbot_settings(data, bot_settings.admin)
+    if not bot_settings.standalone:
+        await start_bot(bot_settings)
 
 
 @discordbot_api.get("/bot/start", status_code=HTTPStatus.OK, response_model=BotInfo)
-async def api_bot_start(settings: BotSettings = Depends(require_bot_settings)):
-    client = await start_bot(settings, http_client)
-    return BotInfo.from_client(client)
+async def api_bot_start(bot_settings: BotSettings = Depends(require_bot_settings)):
+    if bot_settings.standalone:
+        raise HTTPException(status_code=400, detail='Standalone bot cannot be started')
+    client = await start_bot(bot_settings)
+    return BotInfo.from_client(bot_settings, client)
 
 
 @discordbot_api.get("/bot/stop", status_code=HTTPStatus.OK, response_model=BotInfo)
-async def api_bot_stop(settings: BotSettings = Depends(require_bot_settings)):
-    client = await stop_bot(settings)
-    return BotInfo.from_client(client)
+async def api_bot_stop(bot_settings: BotSettings = Depends(require_bot_settings)):
+    if bot_settings.standalone:
+        raise HTTPException(status_code=400, detail='Standalone bot cannot be stopped')
+    client = await stop_bot(bot_settings)
+    return BotInfo.from_client(bot_settings, client)
 
 
 @discordbot_api.get("/users", status_code=HTTPStatus.OK, response_model=list[DiscordUser])
-async def api_discordbot_users(settings: BotSettings = Depends(require_bot_settings)):
-    client = get_client(settings.bot_token)
-    users = await get_usermanager_users(settings.admin)
+async def api_discordbot_users(bot_settings: BotSettings = Depends(require_bot_settings)):
+    filters = Filters(
+        filters=[Filter(field='extra', nested=['discord_id'], values=['null'], op=Operator.NE)]
+    )
+    users = await get_usermanager_users(bot_settings.admin,
+                                        filters=filters)
     results = []
     for user in users:
-        discord_id = user.attrs.get('discord_id')
-        if discord_id:
-            user_dict = user.dict()
-            if client:
-                discord_user = client.get_user(int(discord_id))
-                if not discord_user:
-                    discord_user = await client.fetch_user(int(discord_id))
-
-                user_dict['avatar_url'] = (discord_user.avatar or discord_user.default_avatar).url
-
-            user_dict['discord_id'] = discord_id
-            results.append(user_dict)
+        discord_id = user.extra['discord_id']
+        user_dict = user.dict()
+        user_dict['avatar_url'] = user.extra.get('discord_avatar_url')
+        user_dict['discord_id'] = discord_id
+        results.append(user_dict)
 
     return results
 

@@ -6,5 +6,13 @@ authors=["jacksn"]
 
 
 [tool.poetry.dependencies]
+python = ">=3.8.0"
 discord-py = "^2.1.1"
 pypng = "^0.20220715.0"
+pydantic = "1.10.4"
+httpx = "0.23.0"
+pyqrcode = "1.2.1"
+python-dotenv = "0.21.0"
+
+[tool.poetry.scripts]
+bot = "bot.__main__:start_bot"

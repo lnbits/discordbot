@@ -1,44 +1,72 @@
 from typing import List, Optional
 
-from lnbits.core.crud import create_wallet, delete_wallet, get_payments, get_wallet
+from lnbits.core import Filters
+from lnbits.core.crud import delete_wallet, get_payments
 from lnbits.core.models import Payment
+from lnbits.db import Filter
+from lnbits.extensions.usermanager.crud import (
+    create_usermanager_user,
+    get_usermanager_users,
+    get_usermanager_users_wallets,
+)
+from lnbits.extensions.usermanager.models import CreateUserData
 
-from ..usermanager import crud as um_crud
-from ..usermanager.crud import create_usermanager_user, get_usermanager_user_by
-from ..usermanager.models import CreateUserData
 from . import db
-from .models import BotSettings, CreateBotSettings, DiscordUser, Wallets
+from .models import (
+    BotSettings,
+    CreateBotSettings,
+    DiscordUser,
+    UpdateBotSettings,
+    Wallets,
+)
 
 ### Settings
 
 
 async def get_discordbot_settings(admin_id: str) -> Optional[BotSettings]:
-    row = await db.fetchone("SELECT * FROM discordbot.settings WHERE admin = ?", (admin_id,))
+    row = await db.fetchone("SELECT * FROM discordbot.bots WHERE admin = ?", (admin_id,))
     return BotSettings(**row) if row else None
 
 
 async def get_all_discordbot_settings() -> list[BotSettings]:
-    rows = await db.fetchall("SELECT * FROM discordbot.settings")
+    rows = await db.fetchall("SELECT * FROM discordbot.bots")
     return [BotSettings(**row) for row in rows]
 
 
 async def create_discordbot_settings(data: CreateBotSettings, admin_id: str):
     result = await db.execute(
         f"""
-        INSERT INTO discordbot.settings (admin, bot_token) 
+        INSERT INTO discordbot.bots (admin, token) 
         VALUES (?, ?)
         ON CONFLICT (admin) DO 
-            UPDATE SET bot_token = '{data.bot_token}' 
+            UPDATE SET token = '{data.token}' 
         """,
-        (admin_id, data.bot_token)
+        (admin_id, data.token)
     )
-    assert result.rowcount == 1, "Could not create settings"
+    return await get_discordbot_settings(admin_id)
+
+
+async def update_discordbot_settings(data: UpdateBotSettings, admin_id: str):
+    updates = []
+    values = []
+    for key, val in data.dict(exclude_unset=True).items():
+        updates.append(f"{key} = ?")
+        values.append(val)
+    values.append(admin_id)
+    result = await db.execute(
+        f"""
+        UPDATE discordbot.bots 
+        SET {", ".join(updates)}
+        WHERE admin = ?
+        """,
+        values
+    )
+    return await get_discordbot_settings(admin_id)
 
 
 async def delete_discordbot_settings(admin_id: str):
-    result = await db.execute("DELETE FROM discordbot.settings WHERE admin = ?", (admin_id,))
+    result = await db.execute("DELETE FROM discordbot.bots WHERE admin = ?", (admin_id,))
     assert result.rowcount == 1, "Could not create settings"
-
 
 
 ### Users
@@ -74,27 +102,25 @@ async def get_or_create_wallet(username: str, discord_id: str, admin_id: str = N
             user_name=username,
             wallet_name=f"{username}-main",
             admin_id=admin_id,
-            attrs={
+            extra={
                 'discord_id': discord_id
             }
         ))
-        wallets = await um_crud.get_usermanager_users_wallets(user.id)
-        wallet = wallets[0]
-
+        wallet = user.wallets[0]
 
     return wallet
 
 
 async def get_discord_wallet(discord_id: str, admin_id: str = None):
-    user = await get_usermanager_user_by(
-        admin=admin_id,
-        attrs={
-            'discord_id': discord_id
-        },
+    user = await get_usermanager_users(
+        admin_id,
+        Filters(
+            filters=[Filter(field='extra', nested=['discord_id'], values=[discord_id])]
+        )
     )
 
     if user:
-        wallets = await um_crud.get_usermanager_users_wallets(user.id)
+        wallets = await get_usermanager_users_wallets(user.id)
         return wallets[0]
 
 

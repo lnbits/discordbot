@@ -1,7 +1,13 @@
+from __future__ import annotations
+
 from sqlite3 import Row
 from typing import Optional
 
-import discord
+try:
+    import discord
+except ImportError:
+    discord = None
+
 from pydantic import BaseModel
 
 
@@ -25,31 +31,36 @@ class Wallets(BaseModel):
     def from_row(cls, row: Row) -> "Wallets":
         return cls(**dict(row))
 
+
 class BotSettings(BaseModel):
     admin: str
-    bot_token: str = None
+    token: str
+    name: Optional[str]
+    avatar_url: Optional[str]
+    standalone: bool
 
 
 class CreateBotSettings(BaseModel):
-    bot_token: str
+    token: str
+    standalone: bool
 
-class UpdateBotSettings(BotSettings):
-    bot_token: str
 
-class BotInfo(BaseModel):
-    online: bool
+class UpdateBotSettings(BaseModel):
     name: Optional[str]
     avatar_url: Optional[str]
+    standalone: Optional[bool]
+
+
+class BotInfo(BotSettings):
+    online: Optional[bool]
 
     @classmethod
-    def from_client(cls, client: discord.Client = None):
+    def from_client(cls, settings: BotSettings, client: discord.Client = None):
         if client:
-            return cls(
-                online=client.is_ready(),
-                name=client.user.name if client.user else None,
-                avatar_url=(client.user.avatar or client.user.default_avatar).url if client.user else None,
-            )
+            online = client.is_ready()
         else:
-            return cls(
-                online=False
-            )
+            online = None
+        return cls(
+            online=online,
+            **settings.dict()
+        )
