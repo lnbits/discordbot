@@ -1,129 +1,174 @@
 from http import HTTPStatus
 
-from fastapi import Depends, Query
+from fastapi import APIRouter, Depends, Query
 from starlette.exceptions import HTTPException
 
-from lnbits.core import update_user_extension
-from lnbits.core.crud import get_user
-from lnbits.decorators import WalletTypeInfo, get_key_type
+from lnbits.db import Filter, Filters, Operator
+from lnbits.decorators import WalletTypeInfo, parse_filters, require_admin_key
+from lnbits.extensions.usermanager.crud import get_usermanager_users
+from lnbits.helpers import generate_filter_params_openapi
+from lnbits.settings import settings
 
 from . import discordbot_ext
 from .crud import (
-    create_discordbot_user,
-    create_discordbot_wallet,
-    delete_discordbot_user,
-    delete_discordbot_wallet,
-    get_discordbot_user,
-    get_discordbot_users,
-    get_discordbot_users_wallets,
-    get_discordbot_wallet,
-    get_discordbot_wallet_transactions,
-    get_discordbot_wallets,
+    create_discordbot_settings,
+    delete_discordbot_settings,
+    get_discordbot_settings,
+    update_discordbot_settings,
 )
-from .models import CreateUserData, CreateUserWallet
+from .models import (
+    BotInfo,
+    BotSettings,
+    CreateBotSettings,
+    DiscordFilters,
+    DiscordUser,
+    UpdateBotSettings,
+)
+
+try:
+    from .tasks import get_client, start_bot, stop_bot
+
+    can_run_bot = True
+except ImportError as e:
+
+    def get_client(token: str):
+        return None
+
+    async def start_bot(bot_settings: BotSettings):
+        return None
+
+    async def stop_bot(bot_settings: BotSettings):
+        return None
+
+    raise
+
+    can_run_bot = False
+
+discordbot_api: APIRouter = APIRouter(prefix="/api/v1", tags=["discordbot"])
+
+
+async def require_bot_settings(
+    wallet_info: WalletTypeInfo = Depends(require_admin_key),
+):
+    settings = await get_discordbot_settings(wallet_info.wallet.user)
+    if not settings:
+        raise HTTPException(status_code=400, detail="No bot created")
+    if not settings.standalone and not can_run_bot:
+        raise HTTPException(
+            status_code=400, detail="Can not run discord bots on this instance"
+        )
+    return settings
+
+
+@discordbot_api.delete("", status_code=HTTPStatus.OK)
+async def api_extension_delete(usr: str = Query(...)):
+    settings = await get_discordbot_settings(usr)
+    if settings:
+        await stop_bot(settings)
+        await delete_discordbot_settings(settings.admin)
+
 
 # Users
 
 
-@discordbot_ext.get("/api/v1/users", status_code=HTTPStatus.OK)
+@discordbot_api.get(
+    "/bot",
+    description="Get the current status of your registered bot",
+    status_code=HTTPStatus.OK,
+    response_model=BotInfo,
+)
+async def api_bot_status(bot_settings: BotSettings = Depends(require_bot_settings)):
+    client = get_client(bot_settings.token)
+    return BotInfo.from_client(bot_settings, client)
+
+
+@discordbot_api.post(
+    "/bot",
+    description="Create and start a new bot (only one per user)",
+    status_code=HTTPStatus.OK,
+    response_model=BotInfo,
+)
+async def api_create_bot(
+    data: CreateBotSettings, wallet_type: WalletTypeInfo = Depends(require_admin_key)
+):
+    bot_settings = await create_discordbot_settings(data, wallet_type.wallet.user)
+    if not bot_settings.standalone:
+        if wallet_type.wallet.id == settings.super_user:
+            client = await start_bot(bot_settings)
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Only the super user can host directly on the instance",
+            )
+    else:
+        client = None
+    return BotInfo.from_client(bot_settings, client)
+
+
+@discordbot_api.delete(
+    "/bot",
+    status_code=HTTPStatus.OK,
+)
+async def api_delete_bot(bot_settings: BotSettings = Depends(require_bot_settings)):
+    if not bot_settings.standalone:
+        await stop_bot(bot_settings)
+    await delete_discordbot_settings(bot_settings.admin)
+
+
+@discordbot_api.patch(
+    "/bot",
+    status_code=HTTPStatus.OK,
+)
+async def api_update_bot(
+    data: UpdateBotSettings, bot_settings: BotSettings = Depends(require_bot_settings)
+):
+    bot_settings = await update_discordbot_settings(data, bot_settings.admin)
+    if not bot_settings.standalone:
+        await start_bot(bot_settings)
+
+
+@discordbot_api.get("/bot/start", status_code=HTTPStatus.OK, response_model=BotInfo)
+async def api_bot_start(bot_settings: BotSettings = Depends(require_bot_settings)):
+    if bot_settings.standalone:
+        raise HTTPException(status_code=400, detail="Standalone bot cannot be started")
+    client = await start_bot(bot_settings)
+    return BotInfo.from_client(bot_settings, client)
+
+
+@discordbot_api.get("/bot/stop", status_code=HTTPStatus.OK, response_model=BotInfo)
+async def api_bot_stop(bot_settings: BotSettings = Depends(require_bot_settings)):
+    if bot_settings.standalone:
+        raise HTTPException(status_code=400, detail="Standalone bot cannot be stopped")
+    client = await stop_bot(bot_settings)
+    return BotInfo.from_client(bot_settings, client)
+
+
+@discordbot_api.get(
+    "/users",
+    description="Get a list of users registered for your bot",
+    status_code=HTTPStatus.OK,
+    response_model=list[DiscordUser],
+    openapi_extra=generate_filter_params_openapi(DiscordFilters),
+)
 async def api_discordbot_users(
-    wallet: WalletTypeInfo = Depends(get_key_type),
+    bot_settings: BotSettings = Depends(require_bot_settings),
+    filters: Filters = Depends(parse_filters(DiscordFilters)),
 ):
-    user_id = wallet.wallet.user
-    return [user.dict() for user in await get_discordbot_users(user_id)]
-
-
-@discordbot_ext.get("/api/v1/users/{user_id}", status_code=HTTPStatus.OK)
-async def api_discordbot_user(user_id, wallet: WalletTypeInfo = Depends(get_key_type)):
-    user = await get_discordbot_user(user_id)
-    if user:
-        return user.dict()
-
-
-@discordbot_ext.post("/api/v1/users", status_code=HTTPStatus.CREATED)
-async def api_discordbot_users_create(
-    data: CreateUserData, wallet: WalletTypeInfo = Depends(get_key_type)
-):
-    user = await create_discordbot_user(data)
-    full = user.dict()
-    wallets = await get_discordbot_users_wallets(user.id)
-    if wallets:
-        full["wallets"] = [wallet for wallet in wallets]
-    return full
-
-
-@discordbot_ext.delete("/api/v1/users/{user_id}")
-async def api_discordbot_users_delete(
-    user_id, wallet: WalletTypeInfo = Depends(get_key_type)
-):
-    user = await get_discordbot_user(user_id)
-    if not user:
-        raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND, detail="User does not exist."
-        )
-    await delete_discordbot_user(user_id)
-    return "", HTTPStatus.NO_CONTENT
-
-
-# Activate Extension
-
-
-@discordbot_ext.post("/api/v1/extensions")
-async def api_discordbot_activate_extension(
-    extension: str = Query(...), userid: str = Query(...), active: bool = Query(...)
-):
-    user = await get_user(userid)
-    if not user:
-        raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND, detail="User does not exist."
-        )
-    await update_user_extension(user_id=userid, extension=extension, active=active)
-    return {"extension": "updated"}
-
-
-# Wallets
-
-
-@discordbot_ext.post("/api/v1/wallets")
-async def api_discordbot_wallets_create(
-    data: CreateUserWallet, wallet: WalletTypeInfo = Depends(get_key_type)
-):
-    user = await create_discordbot_wallet(
-        user_id=data.user_id, wallet_name=data.wallet_name, admin_id=data.admin_id
+    for filter in filters.filters:
+        if filter.field == "discord_id":
+            filter.field = "extra"
+            filter.nested = ["discord_id"]
+    filters.filters.append(
+        Filter(field="extra", nested=["discord_id"], values=["null"], op=Operator.NE)
     )
-    return user.dict()
+    users = await get_usermanager_users(bot_settings.admin, filters=filters)
+    results = []
+    for user in users:
+        user_dict = user.dict()
+        user_dict["discord_id"] = user.extra["discord_id"]
+        user_dict["avatar_url"] = user.extra.get("discord_avatar_url")
+        results.append(user_dict)
+    return results
 
 
-@discordbot_ext.get("/api/v1/wallets")
-async def api_discordbot_wallets(
-    wallet: WalletTypeInfo = Depends(get_key_type),
-):
-    admin_id = wallet.wallet.user
-    return await get_discordbot_wallets(admin_id)
-
-
-@discordbot_ext.get("/api/v1/transactions/{wallet_id}")
-async def api_discordbot_wallet_transactions(
-    wallet_id, wallet: WalletTypeInfo = Depends(get_key_type)
-):
-    return await get_discordbot_wallet_transactions(wallet_id)
-
-
-@discordbot_ext.get("/api/v1/wallets/{user_id}")
-async def api_discordbot_users_wallets(
-    user_id, wallet: WalletTypeInfo = Depends(get_key_type)
-):
-    return await get_discordbot_users_wallets(user_id)
-
-
-@discordbot_ext.delete("/api/v1/wallets/{wallet_id}")
-async def api_discordbot_wallets_delete(
-    wallet_id, wallet: WalletTypeInfo = Depends(get_key_type)
-):
-    get_wallet = await get_discordbot_wallet(wallet_id)
-    if not get_wallet:
-        raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND, detail="Wallet does not exist."
-        )
-    await delete_discordbot_wallet(wallet_id, get_wallet.user)
-    return "", HTTPStatus.NO_CONTENT
+discordbot_ext.include_router(discordbot_api)
