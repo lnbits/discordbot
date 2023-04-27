@@ -1,9 +1,9 @@
 {
-    "repos": [
-        {
-            "id": "discordbot",
-            "organisation": "jackstar12",
-            "repository": "discordbot"
-        }
-    ]
+  "repos": [
+    {
+      "id": "discordbot",
+      "organisation": "jackstar12",
+      "repository": "discordbot"
+    }
+  ]
 }

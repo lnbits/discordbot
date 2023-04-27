@@ -67,7 +67,4 @@ class BotInfo(BotSettings):
             online = client.is_ready()
         else:
             online = None
-        return cls(
-            online=online,
-            **settings.dict()
-        )
+        return cls(online=online, **settings.dict())

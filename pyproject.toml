@@ -14,5 +14,8 @@ httpx = "0.23.0"
 pyqrcode = "1.2.1"
 python-dotenv = "0.21.0"
 
+[tool.poetry.group.dev.dependencies]
+black = "^23.3.0"
+
 [tool.poetry.scripts]
 bot = "bot.__main__:start_bot"

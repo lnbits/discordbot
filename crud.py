@@ -5,7 +5,9 @@ from .models import BotSettings, CreateBotSettings, UpdateBotSettings
 
 
 async def get_discordbot_settings(admin_id: str) -> Optional[BotSettings]:
-    row = await db.fetchone("SELECT * FROM discordbot.bots WHERE admin = ?", (admin_id,))
+    row = await db.fetchone(
+        "SELECT * FROM discordbot.bots WHERE admin = ?", (admin_id,)
+    )
     return BotSettings(**row) if row else None
 
 
@@ -17,12 +19,12 @@ async def get_all_discordbot_settings() -> list[BotSettings]:
 async def create_discordbot_settings(data: CreateBotSettings, admin_id: str):
     await db.execute(
         f"""
-        INSERT INTO discordbot.bots (admin, token) 
-        VALUES (?, ?)
+        INSERT INTO discordbot.bots (admin, token, standalone) 
+        VALUES (?, ?, ?)
         ON CONFLICT (admin) DO 
             UPDATE SET token = '{data.token}' 
         """,
-        (admin_id, data.token)
+        (admin_id, data.token, data.standalone),
     )
     return await get_discordbot_settings(admin_id)
 
@@ -40,11 +42,13 @@ async def update_discordbot_settings(data: UpdateBotSettings, admin_id: str):
         SET {", ".join(updates)}
         WHERE admin = ?
         """,
-        values
+        values,
     )
     return await get_discordbot_settings(admin_id)
 
 
 async def delete_discordbot_settings(admin_id: str):
-    result = await db.execute("DELETE FROM discordbot.bots WHERE admin = ?", (admin_id,))
+    result = await db.execute(
+        "DELETE FROM discordbot.bots WHERE admin = ?", (admin_id,)
+    )
     assert result.rowcount == 1, "Could not create settings"

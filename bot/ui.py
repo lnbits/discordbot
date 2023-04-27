@@ -14,76 +14,77 @@ from .models import Wallet
 
 def get_amount_str(sats: int):
     btc = round(sats / 100_000_000, ndigits=8)
-    return f'{sats} Satoshis / ฿{btc}'
+    return f"{sats} Satoshis / ฿{btc}"
 
 
 class WalletButton(discord.ui.Button):
     def __init__(self, base_url: str, wallet: Wallet):
-        walletURL = base_url + f'wallet?usr={wallet.user}&wal={wallet.id}'
+        walletURL = base_url + f"wallet?usr={wallet.user}&wal={wallet.id}"
         super().__init__(
             label="Go to my wallet",
             emoji="💰",
             style=discord.ButtonStyle.link,
-            url=walletURL
+            url=walletURL,
         )
 
 
 class TipButton(discord.ui.Button):
-    def __init__(self,
-                 amount: int,
-                 receiver: discord.Member):
-        super().__init__(
-            style=discord.ButtonStyle.primary,
-            label='Repeat',
-            emoji='💸'
-        )
+    def __init__(self, amount: int, receiver: discord.Member):
+        super().__init__(style=discord.ButtonStyle.primary, label="Repeat", emoji="💸")
         self.receiver = receiver
         self.amount = amount
 
     @classmethod
-    async def execute(cls, interaction: LnbitsInteraction, member: discord.Member, amount: int, memo: str = None):
+    async def execute(
+        cls,
+        interaction: LnbitsInteraction,
+        member: discord.Member,
+        amount: int,
+        memo: str = None,
+    ):
         try:
-            await interaction.client.api.send_payment(interaction.user, member, amount, memo)
+            await interaction.client.api.send_payment(
+                interaction.user, member, amount, memo
+            )
         except HTTPStatusError as e:
             await interaction.response.send_message(content=e.response.content)
             return
 
         embed = discord.Embed(
-            title='Tip',
+            title="Tip",
             color=discord.Color.yellow(),
-            description=f'{interaction.user.mention} just sent **{get_amount_str(amount)}** to {member.mention}'
+            description=f"{interaction.user.mention} just sent **{get_amount_str(amount)}** to {member.mention}",
         )
         if memo:
-            embed.add_field(name='Memo', value=memo)
+            embed.add_field(name="Memo", value=memo)
 
         await interaction.response.send_message(
             embed=embed, view=discord.ui.View().add_item(cls(amount, member))
         )
 
-        await interaction.client.try_send_payment_notification(interaction, interaction.user, member, amount, memo)
+        await interaction.client.try_send_payment_notification(
+            interaction, interaction.user, member, amount, memo
+        )
 
     async def callback(self, interaction: LnbitsInteraction):
         if interaction.user == self.receiver:
             await interaction.response.send_message(
-                ephemeral=True,
-                content='You cant pay yourself'
+                ephemeral=True, content="You cant pay yourself"
             )
         else:
             await self.execute(interaction, self.receiver, self.amount)
 
 
 class PayButton(discord.ui.Button):
-    def __init__(self,
-                 payment_request: str,
-                 receiver: discord.Member,
-                 receiver_wallet: Wallet,
-                 amount: int,
-                 description: str):
-        super().__init__(
-            style=discord.ButtonStyle.primary,
-            label='Pay Now',
-            emoji='💸'
-        )
+    def __init__(
+        self,
+        payment_request: str,
+        receiver: discord.Member,
+        receiver_wallet: Wallet,
+        amount: int,
+        description: str,
+    ):
+        super().__init__(style=discord.ButtonStyle.primary, label="Pay Now", emoji="💸")
         self.payment_request = payment_request
         self.receiver = receiver
         self.receiver_wallet = receiver_wallet
@@ -93,81 +94,74 @@ class PayButton(discord.ui.Button):
     async def callback(self, interaction: LnbitsInteraction):
         if interaction.user == self.receiver:
             await interaction.response.send_message(
-                ephemeral=True,
-                content='You cant pay yourself'
+                ephemeral=True, content="You cant pay yourself"
             )
             return
 
         wallet = await interaction.client.api.get_user_wallet(interaction.user)
 
         # await api_payments_pay_invoice(self.payment_request, wallet)
-        await interaction.client.api.request('POST', '/payments',
-                                             wallet.adminkey,
-                                             json={
-                                                 'out': True,
-                                                 'bolt11': self.payment_request,
-                                             })
+        await interaction.client.api.request(
+            "POST",
+            "/payments",
+            wallet.adminkey,
+            json={
+                "out": True,
+                "bolt11": self.payment_request,
+            },
+        )
 
         await interaction.response.edit_message(
             embed=discord.Embed(
-                title='Pay Me!',
-                description=f'Payed by {interaction.user.mention}',
-                color=discord.Color.yellow()
-            ).add_field(
-                name='Amount',
-                value=get_amount_str(self.price)
-            ).add_field(
-                name='Description',
-                value=self.description
-            ),
+                title="Pay Me!",
+                description=f"Payed by {interaction.user.mention}",
+                color=discord.Color.yellow(),
+            )
+            .add_field(name="Amount", value=get_amount_str(self.price))
+            .add_field(name="Description", value=self.description),
             view=None,
-            attachments=[]
+            attachments=[],
         )
 
-        await interaction.client.try_send_payment_notification(interaction,
-                                                               interaction.user,
-                                                               self.receiver,
-                                                               self.price,
-                                                               self.description)
+        await interaction.client.try_send_payment_notification(
+            interaction, interaction.user, self.receiver, self.price, self.description
+        )
 
 
 class ClaimButton(discord.ui.Button):
-    def __init__(self,
-                 lnurl: str):
-        super().__init__(
-            style=discord.ButtonStyle.primary,
-            label='Claim',
-            emoji='💸'
-        )
+    def __init__(self, lnurl: str):
+        super().__init__(style=discord.ButtonStyle.primary, label="Claim", emoji="💸")
         self.lnurl = lnurl
 
     async def callback(self, interaction: LnbitsInteraction):
         wallet = await interaction.client.api.get_user_wallet(interaction.user)
 
-        lnurl_parts = await interaction.client.api.request(method='get',
-                                                           path=f'/lnurlscan/{self.lnurl}',
-                                                           key=wallet.adminkey)
+        lnurl_parts = await interaction.client.api.request(
+            method="get", path=f"/lnurlscan/{self.lnurl}", key=wallet.adminkey
+        )
 
-        await interaction.client.api.request(method='post',
-                                             path='/payments',
-                                             json={
-                                                 "lnurl_callback": lnurl_parts['callback'],
-                                                 "amount": (lnurl_parts['maxWithdrawable']) / 1000,
-                                                 "memo": lnurl_parts['defaultDescription'],
-                                                 "out": False,
-                                                 "unit": "sat"
-                                             })
+        await interaction.client.api.request(
+            method="post",
+            path="/payments",
+            json={
+                "lnurl_callback": lnurl_parts["callback"],
+                "amount": (lnurl_parts["maxWithdrawable"]) / 1000,
+                "memo": lnurl_parts["defaultDescription"],
+                "out": False,
+                "unit": "sat",
+            },
+        )
 
         await interaction.response.edit_message(
             view=discord.ui.View().add_item(
                 discord.ui.Button(
                     style=discord.ButtonStyle.primary,
-                    label=f'Claimed by {interaction.user.display_name}',
-                    emoji='💸',
-                    disabled=True
+                    label=f"Claimed by {interaction.user.display_name}",
+                    emoji="💸",
+                    disabled=True,
                 )
             ),
-            attachments=[]
+            attachments=[],
         )
 
 
@@ -175,41 +169,30 @@ class CoinFlipJoinButton(discord.ui.Button):
     view: CoinFlipView
 
     def __init__(self):
-        super().__init__(
-            style=discord.ButtonStyle.primary,
-            label='Join',
-            emoji='💸'
-        )
+        super().__init__(style=discord.ButtonStyle.primary, label="Join", emoji="💸")
 
     async def callback(self, interaction: LnbitsInteraction):
         balance = await interaction.client.api.get_user_balance(interaction.user)
 
         if not balance > self.view.stake(interaction.user) + self.view.price:
-            await interaction.response.send_message(content='You do not have enough balance',
-                                                    ephemeral=True)
+            await interaction.response.send_message(
+                content="You do not have enough balance", ephemeral=True
+            )
         else:
             self.view.entries.append(interaction.user)
-            await interaction.response.edit_message(
-                embed=self.view.get_current_embed()
-            )
+            await interaction.response.edit_message(embed=self.view.get_current_embed())
 
 
 class CoinFlipFinishButton(discord.ui.Button):
     view: CoinFlipView
 
     def __init__(self):
-        super().__init__(
-            style=discord.ButtonStyle.secondary,
-            label='Flip',
-            emoji='🪙'
-        )
+        super().__init__(style=discord.ButtonStyle.secondary, label="Flip", emoji="🪙")
 
     async def callback(self, interaction: LnbitsInteraction):
-
         if interaction.user != self.view.initiator:
             await interaction.response.send_message(
-                'Only the creator can flip',
-                ephemeral=True
+                "Only the creator can flip", ephemeral=True
             )
             return
 
@@ -217,7 +200,6 @@ class CoinFlipFinishButton(discord.ui.Button):
         entries_unique = set(self.view.entries)
 
         if len(entries_unique) > 1:
-
             await interaction.response.edit_message(view=None)
 
             sent = 0
@@ -226,10 +208,7 @@ class CoinFlipFinishButton(discord.ui.Button):
                     try:
                         amount = self.view.stake(entry)
                         winner_wallet = await interaction.client.api.send_payment(
-                            entry,
-                            winner,
-                            amount,
-                            self.view.description
+                            entry, winner, amount, self.view.description
                         )
                         sent += amount
                     except HTTPStatusError:
@@ -237,8 +216,8 @@ class CoinFlipFinishButton(discord.ui.Button):
 
             await interaction.followup.send(
                 embed=discord.Embed(
-                    title=f'And the winner is {winner.display_name}!',
-                    color=discord.Color.yellow()
+                    title=f"And the winner is {winner.display_name}!",
+                    color=discord.Color.yellow(),
                 )
             )
 
@@ -246,34 +225,34 @@ class CoinFlipFinishButton(discord.ui.Button):
             winner_balance = await interaction.client.api.get_user_balance(winner)
 
             embed = discord.Embed(
-                title='New Payment',
+                title="New Payment",
                 color=discord.Color.yellow(),
-                description=f'You won **{get_amount_str(sent)}** from a coinflip!\n\n'
-                            f'The flip happened [here]({(await interaction.original_response()).jump_url})'
-            ).add_field(
-                name='New Balance', value=get_amount_str(winner_balance)
-            )
+                description=f"You won **{get_amount_str(sent)}** from a coinflip!\n\n"
+                f"The flip happened [here]({(await interaction.original_response()).jump_url})",
+            ).add_field(name="New Balance", value=get_amount_str(winner_balance))
 
             try:
                 await winner.send(
                     embed=embed,
-                    view=discord.ui.View().add_item(WalletButton(interaction.client.lnbits_url, wallet=winner_wallet))
+                    view=discord.ui.View().add_item(
+                        WalletButton(
+                            interaction.client.lnbits_url, wallet=winner_wallet
+                        )
+                    ),
                 )
             except discord.HTTPException:
                 pass
 
         else:
             await interaction.response.send_message(
-                'You are the only participant',
-                ephemeral=True
+                "You are the only participant", ephemeral=True
             )
 
 
 class CoinFlipView(discord.ui.View):
-    def __init__(self,
-                 initiator: discord.Member | discord.User,
-                 entry: int,
-                 description: str):
+    def __init__(
+        self, initiator: discord.Member | discord.User, entry: int, description: str
+    ):
         super().__init__()
         self.add_item(CoinFlipJoinButton())
         self.add_item(CoinFlipFinishButton())
@@ -288,23 +267,17 @@ class CoinFlipView(discord.ui.View):
 
     def get_current_embed(self):
         embed = discord.Embed(
-            title='Coinflip :coin:',
+            title="Coinflip :coin:",
             color=discord.Color.yellow(),
-            description=self.description
-        ).add_field(
-            name='Entry Price',
-            value=get_amount_str(self.price)
-        )
+            description=self.description,
+        ).add_field(name="Entry Price", value=get_amount_str(self.price))
 
-        entries_str = ''
+        entries_str = ""
         for entry in set(self.entries):
             count = self.entries.count(entry)
             entries_str += entry.display_name
             if count > 1:
-                entries_str += f' x {count}'
-            entries_str += '\n'
-        embed.add_field(
-            name='Entries',
-            value=entries_str
-        )
+                entries_str += f" x {count}"
+            entries_str += "\n"
+        embed.add_field(name="Entries", value=entries_str)
         return embed

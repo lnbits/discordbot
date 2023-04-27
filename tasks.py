@@ -7,9 +7,9 @@ from lnbits.core import get_user
 from lnbits.settings import settings
 
 from . import discordbot_ext
-from .bot.client import LnbitsClient, create_client
-from .crud import get_all_discordbot_settings
-from .models import BotSettings
+from lnbits.extensions.discordbot.bot.client import LnbitsClient, create_client
+from lnbits.extensions.discordbot.crud import get_all_discordbot_settings
+from lnbits.extensions.discordbot.models import BotSettings
 
 http_client: Optional[httpx.AsyncClient] = None
 
@@ -29,7 +29,10 @@ async def start_bot(bot_settings: BotSettings):
     client = clients.get(token)
 
     if not client or client.is_closed:
-        clients[token] = create_client(admin_key, http_client, settings.lnbits_baseurl, settings.lnbits_data_folder)
+        client = create_client(
+            admin_key, http_client, settings.lnbits_baseurl, settings.lnbits_data_folder
+        )
+        clients[token] = client
     else:
         return client
 
@@ -44,7 +47,7 @@ async def start_bot(bot_settings: BotSettings):
     # Wait a bit for client to connect
     waiting = 0
     while not client.is_ready() and waiting < 5:
-        await asyncio.sleep(.25)
+        await asyncio.sleep(0.25)
         waiting += 0.25
     return client
 
@@ -57,16 +60,21 @@ async def stop_bot(bot_settings: BotSettings):
     return client
 
 
-@discordbot_ext.on_event('startup')
-async def on_startup():
-    global http_client
-    http_client = httpx.AsyncClient()
+async def launch_all():
+    await asyncio.sleep(1)
     for settings in await get_all_discordbot_settings():
         if not settings.standalone:
             await start_bot(settings)
 
 
-@discordbot_ext.on_event('shutdown')
+@discordbot_ext.on_event("startup")
+async def on_startup():
+    global http_client
+    http_client = httpx.AsyncClient()
+    asyncio.create_task(launch_all())
+
+
+@discordbot_ext.on_event("shutdown")
 async def on_shutdown():
     global http_client
     for client in clients.values():

@@ -32,7 +32,15 @@ DiscordUser = Union[discord.Member, discord.User]
 
 
 class LnbitsClient(discord.Client):
-    def __init__(self, *, admin_key: str, http: AsyncClient, lnbits_url: str, data_folder: str, **options):
+    def __init__(
+        self,
+        *,
+        admin_key: str,
+        http: AsyncClient,
+        lnbits_url: str,
+        data_folder: str,
+        **options,
+    ):
         super().__init__(**options)
         self.admin_key = admin_key
         self.tree = app_commands.CommandTree(self)
@@ -49,32 +57,32 @@ class LnbitsClient(discord.Client):
             self.tree.copy_global_to(guild=DEV_GUILD)
         await self.tree.sync(guild=DEV_GUILD)
 
-    async def try_send_payment_notification(self,
-                                            interaction: LnbitsInteraction,
-                                            sender: Union[discord.Member, discord.User],
-                                            receiver: Union[discord.Member, discord.User],
-                                            amount: int,
-                                            memo: str = None):
+    async def try_send_payment_notification(
+        self,
+        interaction: LnbitsInteraction,
+        sender: Union[discord.Member, discord.User],
+        receiver: Union[discord.Member, discord.User],
+        amount: int,
+        memo: str = None,
+    ):
         receiver_wallet = await self.api.get_user_wallet(receiver)
         new_balance = await self.api.get_user_balance(receiver)
 
         embed = discord.Embed(
-            title='New Payment',
+            title="New Payment",
             color=discord.Color.yellow(),
-            description=f'You received **{get_amount_str(amount)}** from {sender.mention}\n\n'
-                        f'The payment happened [here]({(await interaction.original_response()).jump_url})'
-        ).add_field(
-            name='New Balance', value=get_amount_str(new_balance)
-        )
+            description=f"You received **{get_amount_str(amount)}** from {sender.mention}\n\n"
+            f"The payment happened [here]({(await interaction.original_response()).jump_url})",
+        ).add_field(name="New Balance", value=get_amount_str(new_balance))
 
         if memo:
-            embed.add_field(
-                name='Memo', value=f'_{memo}_'
-            )
+            embed.add_field(name="Memo", value=f"_{memo}_")
         try:
             await receiver.send(
                 embed=embed,
-                view=discord.ui.View().add_item(WalletButton(self.lnbits_url, wallet=receiver_wallet))
+                view=discord.ui.View().add_item(
+                    WalletButton(self.lnbits_url, wallet=receiver_wallet)
+                ),
             )
         except discord.HTTPException:
             return
@@ -82,6 +90,7 @@ class LnbitsClient(discord.Client):
 
 class LnbitsInteraction(discord.Interaction):
     if TYPE_CHECKING:
+
         @property
         def client(self) -> LnbitsClient:
             """:class:`Client`: The client that is handling this interaction.
@@ -111,38 +120,37 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
         admin_key=admin_key,
         http=http,
         lnbits_url=lnbits_url,
-        data_folder=data_folder
+        data_folder=data_folder,
     )
 
     @client.event
     async def on_ready():
-        print(f'Logged in as {client.user} (ID: {client.user.id})')
-        print('------')
-        await client.api.request('PATCH', '/bot',
-                                 client.admin_key,
-                                 extension='discordbot',
-                                 json={
-                                     'name': client.user.name,
-                                     'avatar_url': client.user.display_avatar.url
-                                 })
+        print(f"Logged in as {client.user} (ID: {client.user.id})")
+        print("------")
+        await client.api.request(
+            "PATCH",
+            "/bot",
+            client.admin_key,
+            extension="discordbot",
+            json={
+                "name": client.user.name,
+                "avatar_url": client.user.display_avatar.url,
+            },
+        )
 
-    @client.tree.command(
-        name="create",
-        description="Create a wallet for your user"
-    )
+    @client.tree.command(name="create", description="Create a wallet for your user")
     async def create(interaction: LnbitsInteraction):
         wallet = await client.api.get_or_create_wallet(interaction.user)
 
         await interaction.response.send_message(
-            content='You have a wallet!',
-            view=discord.ui.View().add_item(WalletButton(interaction.client.lnbits_url, wallet=wallet)),
-            ephemeral=True
+            content="You have a wallet!",
+            view=discord.ui.View().add_item(
+                WalletButton(interaction.client.lnbits_url, wallet=wallet)
+            ),
+            ephemeral=True,
         )
 
-    @client.tree.command(
-        name="balance",
-        description="Check the balance of your wallet"
-    )
+    @client.tree.command(name="balance", description="Check the balance of your wallet")
     async def balance(interaction: LnbitsInteraction):
         # await interaction.response.defer(ephemeral=True)
 
@@ -152,85 +160,75 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
 
         await interaction.response.send_message(
             ephemeral=True,
-            content=f'Your balance: **{get_amount_str(balance)}**',
-            view=discord.ui.View().add_item(WalletButton(interaction.client.lnbits_url, wallet=wallet))
+            content=f"Your balance: **{get_amount_str(balance)}**",
+            view=discord.ui.View().add_item(
+                WalletButton(interaction.client.lnbits_url, wallet=wallet)
+            ),
         )
 
-    @client.tree.command(
-        name="tip",
-        description="Send some sats to another user"
-    )
+    @client.tree.command(name="tip", description="Send some sats to another user")
     @app_commands.describe(
-        member='Who do you want to tip?',
-        amount='Amount of sats to tip',
-        memo="Memo to append"
+        member="Who do you want to tip?",
+        amount="Amount of sats to tip",
+        memo="Memo to append",
     )
     @app_commands.guild_only()
-    async def tip(interaction: LnbitsInteraction, member: discord.Member, amount: int, memo: str):
+    async def tip(
+        interaction: LnbitsInteraction, member: discord.Member, amount: int, memo: str
+    ):
         await TipButton.execute(interaction, member, amount, memo)
 
     @client.tree.command(
-        name="donate",
-        description="Create an open invoice for anyone to claim."
+        name="donate", description="Create an open invoice for anyone to claim."
     )
     @app_commands.describe(
-        amount='The amount of satoshis payable in the invoice',
-        description='Memo of the donation'
+        amount="The amount of satoshis payable in the invoice",
+        description="Memo of the donation",
     )
     @app_commands.guild_only()
     async def donate(interaction: LnbitsInteraction, amount: int, description: str):
-
         wallet = await client.api.get_user_wallet(interaction.user)
 
-        await client.api.request('POST', '/extensions',
-                                 extension='usermanager',
-                                 params={
-                                     'userid': wallet.user,
-                                     'extension': 'withdraw',
-                                     'active': True
-                                 })
+        await client.api.request(
+            "POST",
+            "/extensions",
+            extension="usermanager",
+            params={"userid": wallet.user, "extension": "withdraw", "active": True},
+        )
 
-        resp = await client.api.request(method='post',
-                                        path='/links',
-                                        extension='withdraw',
-                                        key=wallet.adminkey,
-                                        json={
-                                            "title": description,
-                                            "min_withdrawable": amount,
-                                            "max_withdrawable": amount,
-                                            "uses": 1,
-                                            "wait_time": 1,
-                                            "is_unique": True
-                                        })
+        resp = await client.api.request(
+            method="post",
+            path="/links",
+            extension="withdraw",
+            key=wallet.adminkey,
+            json={
+                "title": description,
+                "min_withdrawable": amount,
+                "max_withdrawable": amount,
+                "uses": 1,
+                "wait_time": 1,
+                "is_unique": True,
+            },
+        )
 
         await interaction.response.send_message(
             embed=discord.Embed(
-                title='Donation',
-                description=f'{interaction.user.mention} is donating **{get_amount_str(amount)}**',
-                color=discord.Color.yellow()
-            ).add_field(
-                name='Description',
-                value=description
-            ).add_field(
-                name='LNURL',
-                value=resp['lnurl'],
-                inline=False
-            ),
-            view=discord.ui.View().add_item(
-                ClaimButton(lnurl=resp['lnurl'])
+                title="Donation",
+                description=f"{interaction.user.mention} is donating **{get_amount_str(amount)}**",
+                color=discord.Color.yellow(),
             )
+            .add_field(name="Description", value=description)
+            .add_field(name="LNURL", value=resp["lnurl"], inline=False),
+            view=discord.ui.View().add_item(ClaimButton(lnurl=resp["lnurl"])),
         )
 
-    @client.tree.command(
-        description='Creates an invoice for the users wallet'
-    )
+    @client.tree.command(description="Creates an invoice for the users wallet")
     @app_commands.describe(
-        amount='The amount of satoshis payable in the invoice',
-        description='Memo of the donation'
+        amount="The amount of satoshis payable in the invoice",
+        description="Memo of the donation",
     )
     @app_commands.guild_only()
     async def payme(interaction: LnbitsInteraction, amount: int, description: str):
-
         wallet = await client.api.get_user_wallet(interaction.user)
 
         # invoice = await api_payments_create_invoice(
@@ -242,64 +240,56 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
         #    wallet
         # )
 
-        invoice = await client.api.request('POST', '/payments',
-                                           wallet.adminkey,
-                                           json={
-                                               'out': False,
-                                               'amount': amount,
-                                               'memo': description,
-                                               'unit': "sat"
-                                           })
+        invoice = await client.api.request(
+            "POST",
+            "/payments",
+            wallet.adminkey,
+            json={"out": False, "amount": amount, "memo": description, "unit": "sat"},
+        )
 
-        qr_code = pyqrcode.create(invoice['payment_request'])
+        qr_code = pyqrcode.create(invoice["payment_request"])
 
-        temp_path = os.path.join(client.data_folder, 'temp.png')
+        temp_path = os.path.join(client.data_folder, "temp.png")
         qr_code.png(file=temp_path, scale=5)
 
         await interaction.response.send_message(
-            embed=discord.Embed(
-                title='Pay Me!',
-                color=discord.Color.yellow()
-            ).add_field(
-                name='Amount',
-                value=get_amount_str(amount)
-            ).add_field(
-                name='Description',
-                value=description
-            ).set_image(
-                url='attachment://qr.png'
-            ).add_field(
-                name='Payment Request',
-                value=invoice['payment_request'],
-                inline=False
+            embed=discord.Embed(title="Pay Me!", color=discord.Color.yellow())
+            .add_field(name="Amount", value=get_amount_str(amount))
+            .add_field(name="Description", value=description)
+            .set_image(url="attachment://qr.png")
+            .add_field(
+                name="Payment Request", value=invoice["payment_request"], inline=False
             ),
-            file=discord.File(temp_path, 'qr.png'),
+            file=discord.File(temp_path, "qr.png"),
             view=discord.ui.View().add_item(
                 PayButton(
-                    payment_request=invoice['payment_request'],
+                    payment_request=invoice["payment_request"],
                     receiver=interaction.user,
                     receiver_wallet=wallet,
                     amount=amount,
                     description=description,
                 )
-            )
+            ),
         )
 
-    @client.tree.command(
-        description='Creates an invoice for the users wallet'
-    )
+    @client.tree.command(description="Creates an invoice for the users wallet")
     @app_commands.describe(
-        amount='The amount of sats to give to each use',
-        description='What to send along',
-        users='To how many users do you want to give sats?',
-        roles='Limit selection to certain roles'
+        amount="The amount of sats to give to each use",
+        description="What to send along",
+        users="To how many users do you want to give sats?",
+        roles="Limit selection to certain roles",
     )
     @app_commands.guild_only()
-    async def rain(interaction: LnbitsInteraction, amount: int, description: str, users: int, roles: str = None):
-
+    async def rain(
+        interaction: LnbitsInteraction,
+        amount: int,
+        description: str,
+        users: int,
+        roles: str = None,
+    ):
         parsedRoles = []
         if roles:
-            split = roles.split(' ')
+            split = roles.split(" ")
             for raw_member in split:
                 if len(raw_member) > 4:
                     # '<@&937457548427141151>'
@@ -317,9 +307,13 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
             # await interaction.guild.fetch_members()
 
             validMembers: list[discord.Member] = [
-                member for member in interaction.channel.members
+                member
+                for member in interaction.channel.members
                 if (
-                    (any(role in member.roles for role in parsedRoles) or not parsedRoles)
+                    (
+                        any(role in member.roles for role in parsedRoles)
+                        or not parsedRoles
+                    )
                     and not member.bot
                     and member != interaction.user
                 )
@@ -328,7 +322,9 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
         balance = await client.api.get_user_balance(interaction.user)
 
         if balance < amount:
-            return await interaction.response.send_message(content='You do not have enough balance', ephemeral=True)
+            return await interaction.response.send_message(
+                content="You do not have enough balance", ephemeral=True
+            )
 
         await interaction.response.defer()
 
@@ -339,10 +335,9 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
 
             member = validMembers.pop(idx)
             if member:
-                wallet = await client.api.send_payment(interaction.user,
-                                                       member,
-                                                       amount,
-                                                       description)
+                wallet = await client.api.send_payment(
+                    interaction.user, member, amount, description
+                )
 
                 membersSent.append(member)
                 users -= 1
@@ -350,38 +345,30 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
         await interaction.followup.send(
             embed=discord.Embed(
                 color=discord.Color.yellow(),
-                title=f'💸 Rain by {interaction.user.display_name} 💸',
-                description=f"Sent **{get_amount_str(amount)}** to\n" + "\n".join(
-                    member.mention for member in membersSent
-                )
+                title=f"💸 Rain by {interaction.user.display_name} 💸",
+                description=f"Sent **{get_amount_str(amount)}** to\n"
+                + "\n".join(member.mention for member in membersSent),
             )
         )
 
         for member in membersSent:
-            await client.try_send_payment_notification(interaction,
-                                                       interaction.user,
-                                                       member,
-                                                       amount,
-                                                       description)
+            await client.try_send_payment_notification(
+                interaction, interaction.user, member, amount, description
+            )
 
-    @client.tree.command(
-        description='Creates an coinflip everyone can join'
-    )
+    @client.tree.command(description="Creates an coinflip everyone can join")
     @app_commands.describe(
-        entry='The entry price',
-        description='Whats it about?',
+        entry="The entry price",
+        description="Whats it about?",
     )
     @app_commands.guild_only()
     async def coinflip(interaction: LnbitsInteraction, entry: int, description: str):
         view = CoinFlipView(
-            initiator=interaction.user,
-            entry=entry,
-            description=description
+            initiator=interaction.user, entry=entry, description=description
         )
 
         await interaction.response.send_message(
-            embed=view.get_current_embed(),
-            view=view
+            embed=view.get_current_embed(), view=view
         )
 
     return client

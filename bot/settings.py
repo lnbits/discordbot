@@ -17,7 +17,7 @@ class StandaloneSettings(DiscordSettings):
     lnbits_url: HttpUrl
     lnbits_admin_key: str
     discord_bot_token: Optional[str] = None
-    data_folder: Optional[Path] = '/data'
+    data_folder: Optional[Path] = "/data"
 
 
 discord_settings = DiscordSettings()

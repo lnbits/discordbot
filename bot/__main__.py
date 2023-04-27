@@ -17,13 +17,13 @@ async def run():
             settings.lnbits_admin_key,
             http,
             settings.lnbits_url,
-            str(settings.data_folder)
+            str(settings.data_folder),
         )
         if not settings.discord_bot_token:
-            bot = await client.api.request('GET', '/bot',
-                                           key=settings.lnbits_admin_key,
-                                           extension='discordbot')
-            settings.discord_bot_token = bot['token']
+            bot = await client.api.request(
+                "GET", "/bot", key=settings.lnbits_admin_key, extension="discordbot"
+            )
+            settings.discord_bot_token = bot["token"]
 
         discord.utils.setup_logging()
 
@@ -35,5 +35,5 @@ def start_bot():
     asyncio.run(run())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     start_bot()
