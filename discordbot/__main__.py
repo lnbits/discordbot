@@ -1,7 +1,7 @@
 import asyncio
 
 import discord.utils
-from bot.client import create_client
+from discordbot.client import create_client
 from httpx import AsyncClient
 
 from .settings import StandaloneSettings

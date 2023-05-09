@@ -40,8 +40,6 @@ except ImportError as e:
     async def stop_bot(bot_settings: BotSettings):
         return None
 
-    raise
-
     can_run_bot = False
 
 discordbot_api: APIRouter = APIRouter(prefix="/api/v1", tags=["discordbot"])

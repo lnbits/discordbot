@@ -1,4 +1,6 @@
-from lnbits.db import SQLITE, Database
+import json
+
+from lnbits.db import Database, POSTGRES, SQLITE
 
 
 async def m001_initial(db):
@@ -37,25 +39,37 @@ async def m002_major_overhaul(db: Database):
     # Initial settings table
     await db.execute(
         """
-        CREATE TABLE discordbot.settings (
+        CREATE TABLE IF NOT EXISTS discordbot.settings (
             admin TEXT PRIMARY KEY,
-                CONSTRAINT admin_account_id 
-                FOREIGN KEY(admin)
-                REFERENCES accounts(id)
-                ON DELETE cascade,
-            bot_token TEXT NOT NULL UNIQUE
+            bot_token TEXT NOT NULL UNIQUE,
+            CONSTRAINT admin_account_id 
+            FOREIGN KEY(admin)
+            REFERENCES accounts(id)
+            ON DELETE cascade
         );
     """
     )
     # Migrate old data
     if db.type == SQLITE:
-        await db.execute(
-            """
-            INSERT INTO usermanager.users (id, name, admin, extra) 
-            SELECT id, name, admin, json_object('discord_id', discord_id) FROM discordbot.users
-            """
-        )
-
+        um_db = Database("ext_usermanager")
+        rows = await db.fetchall("SELECT * FROM users")
+        for row in rows:
+            await um_db.execute(
+                """
+                INSERT INTO users (id, name, admin, extra) 
+                VALUES (?, ?, ?, ?)
+                """,
+                (row["id"], row["name"], row["admin"], json.dumps({"discord_id": row["discord_id"]})),
+            )
+        rows = await db.fetchall("SELECT * FROM wallets")
+        for row in rows:
+            await um_db.execute(
+                """
+                INSERT INTO wallets (id, admin, name, "user", adminkey, inkey) 
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (row["id"], row["admin"], row["name"], row["user"], row["adminkey"], row["inkey"]),
+            )
     else:
         await db.execute(
             """
@@ -63,13 +77,12 @@ async def m002_major_overhaul(db: Database):
             SELECT id, name, admin, json_build_object('discord_id', discord_id) FROM discordbot.users
             """
         )
-
-    await db.execute(
-        """
-        INSERT INTO usermanager.wallets (id, admin, name, "user", adminkey, inkey)  
-        SELECT * FROM discordbot.wallets
-        """
-    )
+        await db.execute(
+            """
+            INSERT INTO usermanager.wallets (id, admin, name, "user", adminkey, inkey)  
+            SELECT * FROM discordbot.wallets
+            """
+        )
 
     # Drop old tables
     await db.execute("DROP TABLE discordbot.users")
