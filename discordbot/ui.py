@@ -40,39 +40,40 @@ class TipButton(discord.ui.Button):
         interaction: LnbitsInteraction,
         member: discord.Member,
         amount: int,
-        memo: str = None,
+        memo: Optional[str] = None,
     ):
-        try:
-            await interaction.client.api.send_payment(
-                interaction.user, member, amount, memo
-            )
-        except HTTPStatusError as e:
-            await interaction.response.send_message(content=e.response.content)
-            return
 
-        embed = discord.Embed(
-            title="Tip",
-            color=discord.Color.yellow(),
-            description=f"{interaction.user.mention} just sent **{get_amount_str(amount)}** to {member.mention}",
-        )
-        if memo:
-            embed.add_field(name="Memo", value=memo)
-
-        await interaction.response.send_message(
-            embed=embed, view=discord.ui.View().add_item(cls(amount, member))
-        )
-
-        await interaction.client.try_send_payment_notification(
-            interaction, interaction.user, member, amount, memo
-        )
-
-    async def callback(self, interaction: LnbitsInteraction):
-        if interaction.user == self.receiver:
+        if interaction.user == member:
             await interaction.response.send_message(
                 ephemeral=True, content="You cant pay yourself"
             )
         else:
-            await self.execute(interaction, self.receiver, self.amount)
+            try:
+                await interaction.client.api.send_payment(
+                    interaction.user, member, amount, memo
+                )
+            except HTTPStatusError as e:
+                await interaction.response.send_message(content=e.response.content)
+                return
+
+            embed = discord.Embed(
+                title="Tip",
+                color=discord.Color.yellow(),
+                description=f"{interaction.user.mention} just sent **{get_amount_str(amount)}** to {member.mention}",
+            )
+            if memo:
+                embed.add_field(name="Memo", value=memo)
+
+            await interaction.response.send_message(
+                embed=embed, view=discord.ui.View().add_item(cls(amount, member))
+            )
+
+            await interaction.client.try_send_payment_notification(
+                interaction, interaction.user, member, amount, memo
+            )
+
+    async def callback(self, interaction: LnbitsInteraction):
+        await self.execute(interaction, self.receiver, self.amount)
 
 
 class PayButton(discord.ui.Button):

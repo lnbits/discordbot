@@ -133,7 +133,7 @@ class LnbitsAPI:
         return response.json()
 
     async def send_payment(
-        self, sender: discord.Member, receiver: discord.Member, amount: int, memo: str
+        self, sender: DiscordUser, receiver: DiscordUser, amount: int, memo: Optional[str] = None
     ):
         sender_wallet = await self.get_user_wallet(sender)
 

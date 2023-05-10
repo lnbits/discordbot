@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 
 import os.path
 import random
@@ -21,7 +22,7 @@ from .ui import (
     get_amount_str,
 )
 
-discord.utils.setup_logging()
+discord.utils.setup_logging(root=False)
 
 if discord_settings.discord_dev_guild:
     DEV_GUILD = discord.Object(id=discord_settings.discord_dev_guild)
@@ -63,7 +64,7 @@ class LnbitsClient(discord.Client):
         sender: Union[discord.Member, discord.User],
         receiver: Union[discord.Member, discord.User],
         amount: int,
-        memo: str = None,
+        memo: Optional[str] = None,
     ):
         receiver_wallet = await self.api.get_user_wallet(receiver)
         new_balance = await self.api.get_user_balance(receiver)
@@ -125,8 +126,7 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
 
     @client.event
     async def on_ready():
-        print(f"Logged in as {client.user} (ID: {client.user.id})")
-        print("------")
+        logging.info(f"Logged in as {client.user} (ID: {client.user.id})")
         await client.api.request(
             "PATCH",
             "/bot",
