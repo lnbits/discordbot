@@ -1,9 +1,8 @@
 from http import HTTPStatus
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query, Request, HTTPException
 from starlette.datastructures import MultiDict
 import httpx
-from starlette.exceptions import HTTPException
 
 from lnbits.decorators import WalletTypeInfo, require_admin_key
 from lnbits.helpers import generate_filter_params_openapi
@@ -90,17 +89,20 @@ async def api_create_bot(
     data: CreateBotSettings, wallet_type: WalletTypeInfo = Depends(require_admin_key)
 ):
     bot_settings = await create_discordbot_settings(data, wallet_type.wallet.user)
-    if not bot_settings.standalone:
-        if wallet_type.wallet.id == settings.super_user:
-            client = await start_bot(bot_settings)
+    if bot_settings:
+        if not bot_settings.standalone:
+            if wallet_type.wallet.id == settings.super_user:
+                client = await start_bot(bot_settings)
+            else:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Only the super user can host directly on the instance",
+                )
         else:
-            raise HTTPException(
-                status_code=400,
-                detail="Only the super user can host directly on the instance",
-            )
+            client = None
+        return BotInfo.from_client(bot_settings, client)
     else:
-        client = None
-    return BotInfo.from_client(bot_settings, client)
+        raise HTTPException(status_code=500)
 
 
 @discordbot_api.delete(
@@ -120,9 +122,7 @@ async def api_delete_bot(bot_settings: BotSettings = Depends(require_bot_setting
 async def api_update_bot(
     data: UpdateBotSettings, bot_settings: BotSettings = Depends(require_bot_settings)
 ):
-    bot_settings = await update_discordbot_settings(data, bot_settings.admin)
-    if not bot_settings.standalone:
-        await start_bot(bot_settings)
+    return await update_discordbot_settings(data, bot_settings.admin)
 
 
 @discordbot_api.get("/bot/start", status_code=HTTPStatus.OK, response_model=BotInfo)
