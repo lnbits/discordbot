@@ -1,11 +1,11 @@
 from http import HTTPStatus
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
+from starlette.datastructures import MultiDict
+import httpx
 from starlette.exceptions import HTTPException
 
-from lnbits.db import Filter, Filters, Operator
-from lnbits.decorators import WalletTypeInfo, parse_filters, require_admin_key
-from lnbits.extensions.usermanager.crud import get_usermanager_users
+from lnbits.decorators import WalletTypeInfo, require_admin_key
 from lnbits.helpers import generate_filter_params_openapi
 from lnbits.settings import settings
 
@@ -147,25 +147,33 @@ async def api_bot_stop(bot_settings: BotSettings = Depends(require_bot_settings)
     status_code=HTTPStatus.OK,
     response_model=list[DiscordUser],
     openapi_extra=generate_filter_params_openapi(DiscordFilters),
+    dependencies=[Depends(require_bot_settings)],
 )
 async def api_discordbot_users(
-    bot_settings: BotSettings = Depends(require_bot_settings),
-    filters: Filters = Depends(parse_filters(DiscordFilters)),
+    request: Request,
+    wallet_info: WalletTypeInfo = Depends(require_admin_key),
 ):
-    for filter in filters.filters:
-        if filter.field == "discord_id":
-            filter.field = "extra"
-            filter.nested = ["discord_id"]
-    filters.filters.append(
-        Filter(field="extra", nested=["discord_id"], values=["null"], op=Operator.NE)
-    )
-    users = await get_usermanager_users(bot_settings.admin, filters=filters)
+    # the params are simply forwared to the usermanager endpoint.
+    # any filters with discord_id are prefixed with extra
+    params = MultiDict()
+    params["extra.discord_id[ne]"] = None
+    for key, val in request.query_params.items():
+        if key.startswith("discord_id"):
+            params[f"extra.{key}"] = val
+        else:
+            params[key] = val
+    params["api-key"] = wallet_info.wallet.adminkey
+    async with httpx.AsyncClient() as client:
+        response = await client.get(
+            settings.lnbits_baseurl + "usermanager/api/v1/users", params=params
+        )
+        response.raise_for_status()
+        users = response.json()
     results = []
     for user in users:
-        user_dict = user.dict()
-        user_dict["discord_id"] = user.extra["discord_id"]
-        user_dict["avatar_url"] = user.extra.get("discord_avatar_url")
-        results.append(user_dict)
+        user["discord_id"] = user["extra"]["discord_id"]
+        user["avatar_url"] = user["extra"].get("discord_avatar_url")
+        results.append(user)
     return results
 
 

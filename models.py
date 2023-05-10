@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlite3 import Row
 from typing import Optional
 
-from lnbits.extensions.usermanager import UserFilters
+from lnbits.db import FilterModel
 
 try:
     import discord
@@ -21,8 +21,12 @@ class DiscordUser(BaseModel):
     avatar_url: Optional[str]
 
 
-class DiscordFilters(UserFilters):
+class DiscordFilters(FilterModel):
     __search_fields__ = ["name"]
+    id: str
+    name: str
+    email: Optional[str] = None
+    extra: Optional[dict[str, str]]
     discord_id: str
 
 
