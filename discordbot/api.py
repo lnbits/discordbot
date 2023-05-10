@@ -57,8 +57,10 @@ class LnbitsAPI:
                             }
                         },
                     )
-                except HTTPStatusError:
-                    pass
+                except HTTPStatusError as e:
+                    # ignore 404 (extension probably not updated)
+                    if e.response.status_code != 404:
+                        raise
             return user
 
     async def get_user_wallet(self, discord_user: DiscordUser) -> Optional[Wallet]:
@@ -94,7 +96,7 @@ class LnbitsAPI:
     async def get_or_create_wallet(self, user: DiscordUser) -> Wallet:
         wallet = await self.get_user_wallet(user)
         if not wallet:
-            user = await self.request(
+            new_user = await self.request(
                 "POST",
                 "/users",
                 self.admin_key,
@@ -108,7 +110,7 @@ class LnbitsAPI:
                     },
                 ),
             )
-            wallet = Wallet(**user["wallets"][0])
+            wallet = Wallet(**new_user["wallets"][0])
         return wallet
 
     async def request(

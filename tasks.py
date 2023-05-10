@@ -4,12 +4,12 @@ from typing import Optional
 import httpx
 
 from lnbits.core import get_user
+from lnbits.extensions.discordbot.crud import get_all_discordbot_settings
+from lnbits.extensions.discordbot.discordbot.client import LnbitsClient, create_client
+from lnbits.extensions.discordbot.models import BotSettings
 from lnbits.settings import settings
 
 from . import discordbot_ext
-from lnbits.extensions.discordbot.discordbot.client import LnbitsClient, create_client
-from lnbits.extensions.discordbot.crud import get_all_discordbot_settings
-from lnbits.extensions.discordbot.models import BotSettings
 
 http_client: Optional[httpx.AsyncClient] = None
 

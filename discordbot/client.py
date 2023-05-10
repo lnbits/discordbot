@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os.path
 import random
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import discord
 import discord.utils
@@ -154,8 +154,7 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
     async def balance(interaction: LnbitsInteraction):
         # await interaction.response.defer(ephemeral=True)
 
-        wallet = await client.api.get_user_wallet(interaction.user)
-
+        wallet = await client.api.get_or_create_wallet(interaction.user)
         balance = await client.api.get_user_balance(interaction.user)
 
         await interaction.response.send_message(
@@ -174,7 +173,10 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
     )
     @app_commands.guild_only()
     async def tip(
-        interaction: LnbitsInteraction, member: discord.Member, amount: int, memo: str
+        interaction: LnbitsInteraction,
+        member: discord.Member,
+        amount: int,
+        memo: Optional[str] = None,
     ):
         await TipButton.execute(interaction, member, amount, memo)
 

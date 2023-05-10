@@ -1,6 +1,6 @@
 import json
 
-from lnbits.db import Database, POSTGRES, SQLITE
+from lnbits.db import POSTGRES, SQLITE, Database
 
 
 async def m001_initial(db):
@@ -59,7 +59,12 @@ async def m002_major_overhaul(db: Database):
                 INSERT INTO users (id, name, admin, extra) 
                 VALUES (?, ?, ?, ?)
                 """,
-                (row["id"], row["name"], row["admin"], json.dumps({"discord_id": row["discord_id"]})),
+                (
+                    row["id"],
+                    row["name"],
+                    row["admin"],
+                    json.dumps({"discord_id": row["discord_id"]}),
+                ),
             )
         rows = await db.fetchall("SELECT * FROM wallets")
         for row in rows:
@@ -68,7 +73,14 @@ async def m002_major_overhaul(db: Database):
                 INSERT INTO wallets (id, admin, name, "user", adminkey, inkey) 
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (row["id"], row["admin"], row["name"], row["user"], row["adminkey"], row["inkey"]),
+                (
+                    row["id"],
+                    row["admin"],
+                    row["name"],
+                    row["user"],
+                    row["adminkey"],
+                    row["inkey"],
+                ),
             )
     else:
         await db.execute(
