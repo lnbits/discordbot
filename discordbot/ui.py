@@ -42,7 +42,6 @@ class TipButton(discord.ui.Button):
         amount: int,
         memo: Optional[str] = None,
     ):
-
         if interaction.user == member:
             await interaction.response.send_message(
                 ephemeral=True, content="You cant pay yourself"

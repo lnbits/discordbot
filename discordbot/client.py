@@ -1,6 +1,6 @@
 from __future__ import annotations
-import logging
 
+import logging
 import os.path
 import random
 from typing import TYPE_CHECKING, Optional, Union
@@ -21,8 +21,6 @@ from .ui import (
     WalletButton,
     get_amount_str,
 )
-
-discord.utils.setup_logging(root=False)
 
 if discord_settings.discord_dev_guild:
     DEV_GUILD = discord.Object(id=discord_settings.discord_dev_guild)
@@ -152,12 +150,12 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
 
     @client.tree.command(name="balance", description="Check the balance of your wallet")
     async def balance(interaction: LnbitsInteraction):
-        # await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
 
         wallet = await client.api.get_or_create_wallet(interaction.user)
         balance = await client.api.get_user_balance(interaction.user)
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             ephemeral=True,
             content=f"Your balance: **{get_amount_str(balance)}**",
             view=discord.ui.View().add_item(

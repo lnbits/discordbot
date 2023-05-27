@@ -1,8 +1,8 @@
 from http import HTTPStatus
 
-from fastapi import APIRouter, Depends, Query, Request, HTTPException
-from starlette.datastructures import MultiDict
 import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from starlette.datastructures import MultiDict
 
 from lnbits.decorators import WalletTypeInfo, require_admin_key
 from lnbits.helpers import generate_filter_params_openapi
@@ -24,22 +24,8 @@ from .models import (
     UpdateBotSettings,
 )
 
-try:
-    from .tasks import get_client, start_bot, stop_bot
+from .tasks import start_bot, stop_bot, is_running
 
-    can_run_bot = True
-except ImportError as e:
-
-    def get_client(token: str):
-        return None
-
-    async def start_bot(bot_settings: BotSettings):
-        return None
-
-    async def stop_bot(bot_settings: BotSettings):
-        return None
-
-    can_run_bot = False
 
 discordbot_api: APIRouter = APIRouter(prefix="/api/v1", tags=["discordbot"])
 
@@ -50,10 +36,6 @@ async def require_bot_settings(
     settings = await get_discordbot_settings(wallet_info.wallet.user)
     if not settings:
         raise HTTPException(status_code=400, detail="No bot created")
-    if not settings.standalone and not can_run_bot:
-        raise HTTPException(
-            status_code=400, detail="Can not run discord bots on this instance"
-        )
     return settings
 
 
@@ -75,8 +57,7 @@ async def api_extension_delete(usr: str = Query(...)):
     response_model=BotInfo,
 )
 async def api_bot_status(bot_settings: BotSettings = Depends(require_bot_settings)):
-    client = get_client(bot_settings.token)
-    return BotInfo.from_client(bot_settings, client)
+    return BotInfo(**bot_settings.dict(), online=is_running(bot_settings.token))
 
 
 @discordbot_api.post(
@@ -92,15 +73,15 @@ async def api_create_bot(
     if bot_settings:
         if not bot_settings.standalone:
             if wallet_type.wallet.id == settings.super_user:
-                client = await start_bot(bot_settings)
+                online = await start_bot(bot_settings)
             else:
                 raise HTTPException(
                     status_code=400,
                     detail="Only the super user can host directly on the instance",
                 )
         else:
-            client = None
-        return BotInfo.from_client(bot_settings, client)
+            online = None
+        return BotInfo(**bot_settings.dict(), online=online)
     else:
         raise HTTPException(status_code=500)
 
@@ -129,16 +110,16 @@ async def api_update_bot(
 async def api_bot_start(bot_settings: BotSettings = Depends(require_bot_settings)):
     if bot_settings.standalone:
         raise HTTPException(status_code=400, detail="Standalone bot cannot be started")
-    client = await start_bot(bot_settings)
-    return BotInfo.from_client(bot_settings, client)
+    online = await start_bot(bot_settings)
+    return BotInfo(**bot_settings.dict(), online=online)
 
 
 @discordbot_api.get("/bot/stop", status_code=HTTPStatus.OK, response_model=BotInfo)
 async def api_bot_stop(bot_settings: BotSettings = Depends(require_bot_settings)):
     if bot_settings.standalone:
         raise HTTPException(status_code=400, detail="Standalone bot cannot be stopped")
-    client = await stop_bot(bot_settings)
-    return BotInfo.from_client(bot_settings, client)
+    await stop_bot(bot_settings)
+    return BotInfo(**bot_settings.dict(), online=False)
 
 
 @discordbot_api.get(
@@ -155,6 +136,7 @@ async def api_discordbot_users(
 ):
     # the params are simply forwared to the usermanager endpoint.
     # any filters with discord_id are prefixed with extra
+    # functionality for this should probably provided by the `Filters` class
     params = MultiDict()
     params["extra.discord_id[ne]"] = None
     for key, val in request.query_params.items():
