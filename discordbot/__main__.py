@@ -1,15 +1,29 @@
 import asyncio
+from argparse import ArgumentParser
 
 import discord.utils
-from bot.client import create_client
+from discordbot.client import create_client
 from httpx import AsyncClient
 
 from .settings import StandaloneSettings
 
-settings = StandaloneSettings()
+parser = ArgumentParser()
+parser.add_argument("--lnbits-admin-key", required=False)
+parser.add_argument("--lnbits-url", required=False)
 
 
 async def run():
+    args = parser.parse_args()
+
+    settings = StandaloneSettings()
+    if args.lnbits_admin_key:
+        settings.lnbits_admin_key = args.lnbits_admin_key
+    if args.lnbits_url:
+        settings.lnbits_url = args.lnbits_url
+
+    assert settings.lnbits_admin_key, "Admin key is required"
+    assert settings.lnbits_url, "Lnbits url is required"
+
     async with AsyncClient() as http:
         if not settings.data_folder.is_dir():
             settings.data_folder.mkdir()

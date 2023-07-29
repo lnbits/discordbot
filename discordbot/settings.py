@@ -14,10 +14,10 @@ class DiscordSettings(BaseSettings):
 
 
 class StandaloneSettings(DiscordSettings):
-    lnbits_url: HttpUrl
-    lnbits_admin_key: str
+    lnbits_url: Optional[HttpUrl] = None
+    lnbits_admin_key: Optional[str] = None
     discord_bot_token: Optional[str] = None
-    data_folder: Optional[Path] = "/data"
+    data_folder: Optional[Path] = "./data"
 
 
 discord_settings = DiscordSettings()

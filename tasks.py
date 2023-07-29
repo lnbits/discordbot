@@ -1,5 +1,7 @@
 import asyncio
+from asyncio.subprocess import Process
 from typing import Optional
+from loguru import logger
 
 import httpx
 
@@ -7,57 +9,110 @@ from lnbits.core import get_user
 from lnbits.settings import settings
 
 from . import discordbot_ext
-from lnbits.extensions.discordbot.bot.client import LnbitsClient, create_client
-from lnbits.extensions.discordbot.crud import get_all_discordbot_settings
-from lnbits.extensions.discordbot.models import BotSettings
+from .crud import get_all_discordbot_settings
+from .models import BotSettings
 
 http_client: Optional[httpx.AsyncClient] = None
 
-clients: dict[str, LnbitsClient] = {}
+running: dict[str, asyncio.Task] = {}
 
 
-def get_client(token: str) -> Optional[LnbitsClient]:
-    return clients.get(token)
+async def run_process(*args, on_line=None, **kwargs):
+    """
+    Call a subprocess, waiting for it to finish. If it exits with a non-zero code, an exception is thrown.
+    """
+    kwargs["stdout"] = kwargs["stderr"] = asyncio.subprocess.PIPE
+    process = await asyncio.create_subprocess_shell(*args, **kwargs)
+
+    try:
+        await asyncio.gather(
+            _read_stream(process.stdout, on_line=on_line),
+            _read_stream(process.stderr, on_line=on_line),
+        )
+
+        code = process.returncode
+        if code != 0:
+            raise ValueError(f"Non-zero exit code by {process}")
+    except asyncio.CancelledError:
+        process.kill()
+        raise
 
 
-async def start_bot(bot_settings: BotSettings):
+async def _read_stream(stream, on_line=None):
+    while True:
+        raw = await stream.readline()
+        if raw:
+            line = raw.decode().strip("\n").strip()
+
+            if "ERROR" in line or "WARNING" in line or "INFO" in line:
+                msg = "DISCORD: " + line.split("]")[2]
+            else:
+                msg = line
+
+            if "ERROR" in line:
+                logger.error(msg)
+            elif "WARNING" in line:
+                logger.warning(msg)
+            elif "INFO" in line:
+                logger.info(msg)
+            else:
+                print(msg)
+
+            if on_line:
+                on_line(line)
+        else:
+            break
+
+
+def is_running(token: str) -> bool:
+    task = running.get(token)
+    return bool(task and not task.done())
+
+
+async def start_bot(bot_settings: BotSettings, restart=True):
     token = bot_settings.token
+
+    if is_running(token):
+        return
 
     admin_user = await get_user(bot_settings.admin)
     admin_key = admin_user.wallets[0].adminkey
 
-    client = clients.get(token)
+    fut = asyncio.get_running_loop().create_future()
 
-    if not client or client.is_closed:
-        client = create_client(
-            admin_key, http_client, settings.lnbits_baseurl, settings.lnbits_data_folder
-        )
-        clients[token] = client
-    else:
-        return client
-
-    await client.login(token)
+    def on_line(msg):
+        if "connected" in msg and not fut.done():
+            fut.set_result(True)
 
     async def runner():
-        async with client:
-            await client.connect()
+        try:
+            task = asyncio.create_task(
+                run_process(
+                    f"""
+                    cd {settings.lnbits_path}/extensions/discordbot && 
+                    poetry install --no-root && 
+                    poetry run bot --lnbits-admin-key {admin_key} --lnbits-url {settings.lnbits_baseurl}
+                    """,
+                    on_line=on_line,
+                )
+            )
+            running[token] = task
+            await task
+        except ValueError:
+            if restart:
+                logger.info(f"Restarting bot by {bot_settings.admin}")
+                await start_bot(bot_settings, restart=False)
 
     asyncio.create_task(runner())
 
-    # Wait a bit for client to connect
-    waiting = 0
-    while not client.is_ready() and waiting < 5:
-        await asyncio.sleep(0.25)
-        waiting += 0.25
-    return client
+    # Wait for bot to come online
+    return await asyncio.wait_for(fut, timeout=30)
 
 
 async def stop_bot(bot_settings: BotSettings):
-    token = bot_settings.token
-    client = clients.get(token)
-    if client:
-        await client.close()
-    return client
+    task = running.pop(bot_settings.token)
+    if task:
+        task.cancel()
 
 
 async def launch_all():
@@ -77,6 +132,7 @@ async def on_startup():
 @discordbot_ext.on_event("shutdown")
 async def on_shutdown():
     global http_client
-    for client in clients.values():
-        await client.close()
-    await http_client.aclose()
+    for task in running.values():
+        task.cancel()
+    if http_client:
+        await http_client.aclose()
