@@ -26,8 +26,6 @@ class DiscordFilters(FilterModel):
     id: str
     name: str
     email: Optional[str] = None
-    extra: Optional[dict[str, str]]
-    discord_id: str
 
 
 class Wallets(BaseModel):

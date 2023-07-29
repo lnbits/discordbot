@@ -1,4 +1,6 @@
+import json
 from http import HTTPStatus
+from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -134,16 +136,7 @@ async def api_discordbot_users(
     request: Request,
     wallet_info: WalletTypeInfo = Depends(require_admin_key),
 ):
-    # the params are simply forwared to the usermanager endpoint.
-    # any filters with discord_id are prefixed with extra
-    # functionality for this should probably provided by the `Filters` class
-    params = MultiDict()
-    params["extra.discord_id[ne]"] = None
-    for key, val in request.query_params.items():
-        if key.startswith("discord_id"):
-            params[f"extra.{key}"] = val
-        else:
-            params[key] = val
+    params = dict(request.query_params)
     params["api-key"] = wallet_info.wallet.adminkey
     async with httpx.AsyncClient() as client:
         response = await client.get(
@@ -153,9 +146,10 @@ async def api_discordbot_users(
         users = response.json()
     results = []
     for user in users:
-        user["discord_id"] = user["extra"]["discord_id"]
-        user["avatar_url"] = user["extra"].get("discord_avatar_url")
-        results.append(user)
+        if "extra" in user and "discord_id" in user["extra"]:
+            user["discord_id"] = user["extra"]["discord_id"]
+            user["avatar_url"] = user["extra"].get("discord_avatar_url")
+            results.append(user)
     return results
 
 
