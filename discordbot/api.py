@@ -73,7 +73,7 @@ class LnbitsAPI:
                 if not wallets:
                     await self.request(
                         "POST",
-                        f'/wallets',
+                        f"/wallets",
                         self.admin_key,
                         extension="usermanager",
                         json={"wallet_name": f"{discord_user.name}-main"},
@@ -83,7 +83,9 @@ class LnbitsAPI:
                 self.wallet_cache[discord_user] = wallet
         return wallet
 
-    async def get_user_balance(self, discord_user: DiscordUser, _retry=True) -> Optional[int]:
+    async def get_user_balance(
+        self, discord_user: DiscordUser, _retry=True
+    ) -> Optional[int]:
         wallet = await self.get_user_wallet(discord_user)
         try:
             wallet = await self.request("GET", "/wallet", wallet.adminkey)
@@ -126,9 +128,9 @@ class LnbitsAPI:
         response = await self.lnbits_http.request(
             method,
             url=self.lnbits_url
-                + (extension + "/" if extension else "")
-                + "api/v1"
-                + path,
+            + (extension + "/" if extension else "")
+            + "api/v1"
+            + path,
             **kwargs,
         )
 
