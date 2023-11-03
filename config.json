@@ -1,6 +1,6 @@
 {
   "name": "Discord Bot",
-  "short_description": "Generate users and wallets",
+  "short_description": "Provide wallets for Discord users",
   "tile": "/discordbot/static/image/discordbot.png",
   "contributors": ["jacksn", "chrislennon", "bitcoingamer21"],
   "dependencies": ["withdraw", "usermanager"]
