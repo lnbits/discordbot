@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import logging
 import os.path
 import random
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Optional, Union
 
 import discord
 import discord.utils
@@ -20,8 +21,6 @@ from .ui import (
     WalletButton,
     get_amount_str,
 )
-
-discord.utils.setup_logging()
 
 if discord_settings.discord_dev_guild:
     DEV_GUILD = discord.Object(id=discord_settings.discord_dev_guild)
@@ -63,7 +62,7 @@ class LnbitsClient(discord.Client):
         sender: Union[discord.Member, discord.User],
         receiver: Union[discord.Member, discord.User],
         amount: int,
-        memo: str = None,
+        memo: Optional[str] = None,
     ):
         receiver_wallet = await self.api.get_user_wallet(receiver)
         new_balance = await self.api.get_user_balance(receiver)
@@ -125,8 +124,7 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
 
     @client.event
     async def on_ready():
-        print(f"Logged in as {client.user} (ID: {client.user.id})")
-        print("------")
+        logging.info(f"Logged in as {client.user} (ID: {client.user.id})")
         await client.api.request(
             "PATCH",
             "/bot",
@@ -152,13 +150,12 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
 
     @client.tree.command(name="balance", description="Check the balance of your wallet")
     async def balance(interaction: LnbitsInteraction):
-        # await interaction.response.defer(ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
 
-        wallet = await client.api.get_user_wallet(interaction.user)
-
+        wallet = await client.api.get_or_create_wallet(interaction.user)
         balance = await client.api.get_user_balance(interaction.user)
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             ephemeral=True,
             content=f"Your balance: **{get_amount_str(balance)}**",
             view=discord.ui.View().add_item(
@@ -174,7 +171,10 @@ def create_client(admin_key: str, http: AsyncClient, lnbits_url: str, data_folde
     )
     @app_commands.guild_only()
     async def tip(
-        interaction: LnbitsInteraction, member: discord.Member, amount: int, memo: str
+        interaction: LnbitsInteraction,
+        member: discord.Member,
+        amount: int,
+        memo: Optional[str] = None,
     ):
         await TipButton.execute(interaction, member, amount, memo)
 
