@@ -3,13 +3,13 @@ from typing import Optional
 
 import httpx
 
-from lnbits.core import get_user
+from lnbits.core.crud import get_user
 from lnbits.settings import settings
 
 from . import discordbot_ext
-from lnbits.extensions.discordbot.bot.client import LnbitsClient, create_client
-from lnbits.extensions.discordbot.crud import get_all_discordbot_settings
-from lnbits.extensions.discordbot.models import BotSettings
+from .bot.client import LnbitsClient, create_client
+from .crud import get_all_discordbot_settings
+from .models import BotSettings
 
 http_client: Optional[httpx.AsyncClient] = None
 

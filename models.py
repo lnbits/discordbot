@@ -3,7 +3,7 @@ from __future__ import annotations
 from sqlite3 import Row
 from typing import Optional
 
-from usermanager import User, UserFilters
+from lnbits.extensions.usermanager.models import UserFilters
 
 try:
     import discord
