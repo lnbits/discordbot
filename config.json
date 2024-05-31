@@ -3,5 +3,6 @@
   "short_description": "Provide wallets for Discord users",
   "tile": "/discordbot/static/image/discordbot.png",
   "contributors": ["jacksn", "chrislennon", "bitcoingamer21"],
-  "dependencies": ["withdraw", "usermanager"]
+  "dependencies": ["withdraw", "usermanager"],
+  "min_lnbits_version": "0.XX.0"
 }
