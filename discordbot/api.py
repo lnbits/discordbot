@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Optional, Union
 
 import discord
@@ -37,7 +38,7 @@ class LnbitsAPI:
             "/users",
             self.admin_key,
             extension="usermanager",
-            params={"extra.discord_id": str(discord_user.id)},
+            params={"extra": json.dumps({"discord_id": str(discord_user.id)})},
         )
         if users:
             user = users[0]
@@ -45,20 +46,17 @@ class LnbitsAPI:
                 user["extra"].get("discord_avatar_url")
                 != discord_user.display_avatar.url
             ):
-                try:
-                    await self.request(
-                        "PATCH",
-                        f'/users/{user["id"]}',
-                        self.admin_key,
-                        extension="usermanager",
-                        json={
-                            "extra": {
-                                "discord_avatar_url": discord_user.display_avatar.url,
-                            }
-                        },
-                    )
-                except HTTPStatusError:
-                    pass
+                await self.request(
+                    "PATCH",
+                    f'/users/{user["id"]}',
+                    self.admin_key,
+                    extension="usermanager",
+                    json={
+                        "extra": {
+                            "discord_avatar_url": discord_user.display_avatar.url,
+                        }
+                    },
+                )
             return user
 
     async def get_user_wallet(self, discord_user: DiscordUser) -> Optional[Wallet]:
@@ -72,12 +70,22 @@ class LnbitsAPI:
                     self.admin_key,
                     extension="usermanager",
                 )
+                if not wallets:
+                    await self.request(
+                        "POST",
+                        f"/wallets",
+                        self.admin_key,
+                        extension="usermanager",
+                        json={"wallet_name": f"{discord_user.name}-main"},
+                    )
 
                 wallet = Wallet(**wallets[0])
                 self.wallet_cache[discord_user] = wallet
         return wallet
 
-    async def get_user_balance(self, discord_user: DiscordUser) -> Optional[int]:
+    async def get_user_balance(
+        self, discord_user: DiscordUser, _retry=True
+    ) -> Optional[int]:
         wallet = await self.get_user_wallet(discord_user)
         try:
             wallet = await self.request("GET", "/wallet", wallet.adminkey)
@@ -85,16 +93,15 @@ class LnbitsAPI:
                 return int(wallet["balance"] / 1000)
         except HTTPStatusError:
             # Try again after clearing cache
-            if discord_user in self.wallet_cache:
-                self.wallet_cache.pop(discord_user)
-                return await self.get_user_balance(discord_user)
+            if _retry and discord_user in self.wallet_cache.pop(discord_user, None):
+                return await self.get_user_balance(discord_user, _retry=False)
             else:
                 raise
 
     async def get_or_create_wallet(self, user: DiscordUser) -> Wallet:
         wallet = await self.get_user_wallet(user)
         if not wallet:
-            user = await self.request(
+            new_user = await self.request(
                 "POST",
                 "/users",
                 self.admin_key,
@@ -108,7 +115,8 @@ class LnbitsAPI:
                     },
                 ),
             )
-            wallet = Wallet(**user["wallets"][0])
+            wallet = Wallet(**new_user["wallets"][0])
+            self.wallet_cache[user] = wallet
         return wallet
 
     async def request(
@@ -131,7 +139,11 @@ class LnbitsAPI:
         return response.json()
 
     async def send_payment(
-        self, sender: discord.Member, receiver: discord.Member, amount: int, memo: str
+        self,
+        sender: DiscordUser,
+        receiver: DiscordUser,
+        amount: int,
+        memo: Optional[str] = None,
     ):
         sender_wallet = await self.get_user_wallet(sender)
 
